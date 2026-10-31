@@ -89,11 +89,11 @@ function databasePath() {
     return path.resolve(__dirname, '..', process.env.SLCTI_DATABASE || 'private/slcti.db');
 }
 
-// The database is encrypted with SQLCipher; its key comes from SLCTI_DB_KEY
+// The database is encrypted with SQLCipher; its key comes from SLCTI_DATABASE_KEY
 function databaseKey() {
-    const key = process.env.SLCTI_DB_KEY;
+    const key = process.env.SLCTI_DATABASE_KEY;
 
-    if (!key) throw new Error(`SLCTI_DB_KEY is missing: add it to ${ENV_FILE} (or to the environment)`);
+    if (!key) throw new Error(`SLCTI_DATABASE_KEY is missing: add it to ${ENV_FILE} (or to the environment)`);
 
     return key;
 }
@@ -112,7 +112,7 @@ async function openDatabase(file, key = databaseKey()) {
         db.prepare('SELECT COUNT(*) FROM sqlite_master').get();
     } catch (err) {
         db.close();
-        throw new Error(`Cannot open ${file}: wrong SLCTI_DB_KEY or unencrypted database (${err.message})`);
+        throw new Error(`Cannot open ${file}: wrong SLCTI_DATABASE_KEY or unencrypted database (${err.message})`);
     }
 
     const wrapper = {

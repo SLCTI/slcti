@@ -1,5 +1,5 @@
 # SLCTI
-A corporate website, including a resume, created from scratch using Node.js.
+A corporate website, including a resume, created from scratch using Node.js, now updraded using Claude Code.
 
 ## Usage
 1. Install and configure prerequisites ([Node.js](https://nodejs.org/en/download)):
@@ -111,14 +111,14 @@ cat /etc/ssl/certs/slcti.csr
 ### Secure section
 Resources, timesheets, expenses, bills, payments and totals are available at `/secure`. Everything is stored in a single SQLite database, `private/slcti.db`, which is ignored by Git and created on first start. Set `SLCTI_DATABASE` in `.env` to store it elsewhere. The table definitions are in `src/secure_db.js`.
 
-The database is encrypted with SQLCipher. Its key is `SLCTI_DB_KEY` in `.env` (see `.env.example`), which is never committed: keep a copy of it in a password manager, since the data cannot be read without it. SQLite tools without SQLCipher support (such as `sqlite3` or the SQLTools extension) cannot open the file.
+The database is encrypted with SQLCipher. Its key is `SLCTI_DATABASE_KEY` in `.env` (see `.env.example`), which is never committed: keep a copy of it in a password manager, since the data cannot be read without it. SQLite tools without SQLCipher support (such as `sqlite3` or the SQLTools extension) cannot open the file.
 
 Keep every private file (database, backups, source spreadsheets) in `private/` and every secret in `.env`: neither is committed, and `private/` is not served by the web server.
 
 #### Configuration
-All the settings are in `.env` (see `.env.example`): `NODE_ENV` (`development` or `production`), `SLCTI_CERTIFICATES` (folder of the HTTPS certificates, production only), `SLCTI_DATABASE` (optional) and `SLCTI_DB_KEY`. On a new machine, copy `.env` from an existing installation. To start from an empty database instead, copy `.env.example` to `.env` and fill in a new key.
+All the settings are in `.env` (see `.env.example`): `NODE_ENV` (`development` or `production`), `SLCTI_CERTIFICATES` (folder of the HTTPS certificates, production only), `SLCTI_DATABASE` (optional) and `SLCTI_DATABASE_KEY`. On a new machine, copy `.env` from an existing installation. To start from an empty database instead, copy `.env.example` to `.env` and fill in a new key.
 
-The production settings are kept locally in `.env.production` (same key as `.env`), which `bin/deploy.ps1` sends to the server as `.env`. The server it deploys to is set by `DEPLOY_USER`, `DEPLOY_HOST`, `DEPLOY_DIR` and `DEPLOY_SERVICE` in the local `.env`.
+The production settings are kept locally in `.env.production` (same key as `.env`), which `bin/deploy.ps1` sends to the server as `.env`. The server it deploys to is set by `SLCTI_DEPLOY_USER`, `SLCTI_DEPLOY_HOST`, `SLCTI_DEPLOY_DIR` and `SLCTI_DEPLOY_SERVICE` in the local `.env`.
 
 #### Deploy
 ```powershell
@@ -127,7 +127,7 @@ The production settings are kept locally in `.env.production` (same key as `.env
 ```
 The code goes through Git; `.env.production` and the database are copied with `scp` and never committed (the script refuses to commit them). The local database is only sent when the server has none yet, or with `-Database`: it then replaces the production data, after a backup of it on the server in `private/backups/`.
 
-At the end, production holds the reference data: a copy of the production database is kept in `private/backups/slcti-production-<time>.db` and replaces the local data (the local data is backed up first to `private/backups/slcti-local-<time>.db`), so local work is always on current data. This works while the local server runs. Both `.env` files must therefore use the same `SLCTI_DB_KEY`. To restore any backup into the local database the same way: `node src/restore_db.js FILE`.
+At the end, production holds the reference data: a copy of the production database is kept in `private/backups/slcti-production-<time>.db` and replaces the local data (the local data is backed up first to `private/backups/slcti-local-<time>.db`), so local work is always on current data. This works while the local server runs. Both `.env` files must therefore use the same `SLCTI_DATABASE_KEY`. To restore any backup into the local database the same way: `node src/restore_db.js FILE`.
 
 #### Logins and passwords
 Administrators manage the site access on the Resources page: a resource with a role (administrator or accountant) and a password signs in with its email, and choosing *No access* removes its password. Administrators have full access. Accountants have read-only access to timesheets (without descriptions), expenses, bills (without the client box), payments and totals, but not to resources. An administrator cannot remove their own administrator access nor delete their own resource, so there is always one left.
@@ -148,11 +148,11 @@ node src/backup_db.js
 
 ## Contact
 ### SLCIT
-- Simon Charest, Founder and CEO :
+- Simon Charest, Founder and CEO:
     - [Website](https://www.slcti.ca/);
     - [Email](mailto:info@slcti.ca);
     - [GitHub](https://github.com/slcti/);
     - [LinkedIn](https://www.linkedin.com/in/simoncharest/).
 
 ## Acknowledgments
-- [ChatGPT](https://chat.openai.com/).
+- [Claude Code](https://claude.com/product/claude-code).

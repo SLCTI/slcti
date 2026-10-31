@@ -1,6 +1,6 @@
 # Usage: .\bin\deploy.ps1 [-Database]
 # Commits and pushes the code, then deploys it on the server with .env.production as its .env.
-# The server comes from DEPLOY_* in the local .env; the settings and the database never go through Git: they are copied with scp.
+# The server comes from SLCTI_DEPLOY_* in the local .env; the settings and the database never go through Git: they are copied with scp.
 
 param(
     # Also replace the production database with the local one (otherwise it is only sent when the server has none)
@@ -29,7 +29,7 @@ function Assert-Success($Message) {
 
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
-# -------- Server (DEPLOY_* in the local .env, see .env.example) --------
+# -------- Server (SLCTI_DEPLOY_* in the local .env, see .env.example) --------
 if (-not (Test-Path .env)) {
     throw ".env is missing (see .env.example)"
 }
@@ -37,20 +37,20 @@ if (-not (Test-Path .env)) {
 $Local = @{}
 
 foreach ($Line in Get-Content .env) {
-    if ($Line -match '^\s*(DEPLOY_\w+)\s*=\s*(.*?)\s*$') {
+    if ($Line -match '^\s*(SLCTI_DEPLOY_\w+)\s*=\s*(.*?)\s*$') {
         $Local[$Matches[1]] = $Matches[2]
     }
 }
 
-foreach ($Name in 'DEPLOY_USER', 'DEPLOY_HOST', 'DEPLOY_DIR', 'DEPLOY_SERVICE') {
+foreach ($Name in 'SLCTI_DEPLOY_USER', 'SLCTI_DEPLOY_HOST', 'SLCTI_DEPLOY_DIR', 'SLCTI_DEPLOY_SERVICE') {
     if (-not $Local[$Name]) {
         throw "$Name is missing from .env (see .env.example)"
     }
 }
 
-$APP_DIR = $Local.DEPLOY_DIR
-$SERVICE = $Local.DEPLOY_SERVICE
-$SERVER  = "$($Local.DEPLOY_USER)@$($Local.DEPLOY_HOST)"
+$APP_DIR = $Local.SLCTI_DEPLOY_DIR
+$SERVICE = $Local.SLCTI_DEPLOY_SERVICE
+$SERVER  = "$($Local.SLCTI_DEPLOY_USER)@$($Local.SLCTI_DEPLOY_HOST)"
 
 # -------- Checks --------
 if (-not (Test-Path $ENV_FILE)) {
@@ -59,17 +59,17 @@ if (-not (Test-Path $ENV_FILE)) {
 
 $Settings = Get-Content $ENV_FILE
 
-foreach ($Required in '^NODE_ENV=production\s*$', '^SLCTI_CERTIFICATES=\S', '^SLCTI_DB_KEY=\S') {
+foreach ($Required in '^NODE_ENV=production\s*$', '^SLCTI_CERTIFICATES=\S', '^SLCTI_DATABASE_KEY=\S') {
     if (-not ($Settings -match $Required)) {
         throw "$ENV_FILE must match $Required (see .env.example)"
     }
 }
 
 # The production database comes back to the local one at the end: both must use the same key
-$Key = { param($File) (Get-Content $File | Where-Object { $_ -match '^SLCTI_DB_KEY=' } | Select-Object -First 1) -replace '\s+$', '' }
+$Key = { param($File) (Get-Content $File | Where-Object { $_ -match '^SLCTI_DATABASE_KEY=' } | Select-Object -First 1) -replace '\s+$', '' }
 
 if ((& $Key .env) -ne (& $Key $ENV_FILE)) {
-    throw "SLCTI_DB_KEY must be the same in .env and $ENV_FILE"
+    throw "SLCTI_DATABASE_KEY must be the same in .env and $ENV_FILE"
 }
 
 # -------- Local Git --------
@@ -177,13 +177,20 @@ rm -rf .next .cache dist tmp
 mkdir -p private/backups
 chmod 700 private private/backups
 
+stamp=$(date +%F-%H%M%S)
+
+# The settings come first: the code that was just installed reads them, also to back up the database below
+echo Updating settings...
+if [ -f .env ]; then cp .env private/backups/slcti-$stamp.env && chmod 600 private/backups/slcti-$stamp.env; fi
+mv private/env.upload .env
+chmod 600 .env
+rm -f config.json
+
 if [ __SEND_DATABASE__ = 1 ]; then
     if [ -f private/slcti.db ]; then
-        echo Backing up the production database and its key...
-        stamp=$(date +%F-%H%M%S)
+        echo Backing up the production database...
         node src/backup_db.js private/backups/slcti-$stamp.db
-        cp .env private/backups/slcti-$stamp.env
-        chmod 600 private/backups/*
+        chmod 600 private/backups/slcti-$stamp.db
     fi
 
     echo Replacing the production database...
@@ -192,11 +199,6 @@ if [ __SEND_DATABASE__ = 1 ]; then
     mv private/slcti.db.upload private/slcti.db
     chmod 600 private/slcti.db
 fi
-
-echo Updating settings...
-mv private/env.upload .env
-chmod 600 .env
-rm -f config.json
 
 echo Restarting service...
 sudo systemctl daemon-reload
