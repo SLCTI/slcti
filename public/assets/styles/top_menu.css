@@ -18,24 +18,109 @@
 }
 
 .logo img {
-    width: 32px;
+    width: 26px;
+}
+
+/* Menu links never underline, and the flag keeps its size on every page */
+.navbar a:hover {
+    text-decoration: none;
+}
+
+.navbar .icon-flag {
+    height: 15px;
+    padding-right: 8px;
+    vertical-align: -2px;
+    width: 24px;
+}
+
+/* Same title on every page (the secure pages do not load class.css) */
+.logo-link .title {
+    font-family: 'Roboto', sans-serif;
+    font-weight: bold;
 }
 
 @media (min-width: 601px) {
+    .nav-container {
+        align-items: center;
+    }
+
+    .nav-container > .logo {
+        flex: 0 0 auto;
+        padding: 0 16px 0 8px;
+    }
+
+    .logo-link {
+        font-size: x-large;
+        gap: 8px;
+    }
+
+    /* The empty hamburger button only serves the phone menu */
+    .menu-toggle {
+        display: none;
+    }
+
+    .logo-link {
+        position: static;
+    }
+
     .menu {
         display: flex;
+        flex: 1;
         list-style-type: none;
+    }
+
+    .menu-main,
+    .menu-secure,
+    .menu-utility {
+        display: flex;
+    }
+
+    /* Signed in: the secure links sit on the right, before the utility links */
+    .menu-secure {
+        margin-left: auto;
+    }
+
+    .menu-secure + .menu-utility {
+        margin-left: 0;
+    }
+
+    .menu-utility {
         margin-left: auto;
     }
 
     .menu a {
         color: white;
         display: block;
-        padding: 15px 20px;
+        font-size: 15px;
+        padding: 14px 10px;
         text-decoration: none;
+        white-space: nowrap;
     }
 
     .menu a:hover {
         background-color: #575757;
     }
+}
+
+/* Log out is a form button that looks like the other menu links */
+.menu-form {
+    display: flex;
+    margin: 0;
+}
+
+.navbar .menu-form button {
+    background: none;
+    border: none;
+    border-radius: 0;
+    color: white;
+    cursor: pointer;
+    display: block;
+    font: inherit;
+    font-size: 15px;
+    padding: 14px 10px;
+    white-space: nowrap;
+}
+
+.navbar .menu-form button:hover {
+    background-color: #575757;
 }

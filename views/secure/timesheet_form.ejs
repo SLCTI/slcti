@@ -1,0 +1,39 @@
+<%- include('header', { title: timesheet.id ? t('Edit entry') : t('New entry') }) %>
+            <form method="post" action="/secure/timesheets<%= timesheet.id ? '/' + timesheet.id : '' %>" class="card">
+                <h1><%= timesheet.id ? t('Edit entry') : t('New entry') %></h1>
+                <% errors.forEach(error => { %><p class="error"><%= t(error) %></p><% }); %>
+                <% if (customers.length === 0) { %>
+                    <p class="error"><%- t('Add a <a href="/secure/resources/new">resource</a> first.') %></p>
+                <% } %>
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <label><%= t('Date') %>
+                    <input type="date" name="date" value="<%= timesheet.date %>" required>
+                </label>
+                <label><%= t('Start') %>
+                    <input type="time" name="start_time" value="<%= timesheet.start_time %>" step="900" required>
+                </label>
+                <label><%= t('End') %>
+                    <input type="time" name="end_time" value="<%= timesheet.end_time %>" step="900" required>
+                </label>
+                <% [['shipped_resource_id', 'Client', true], ['billed_resource_id', 'Billed to', false], ['assigned_resource_id', 'Assigned to', false]].forEach(([field, label, required]) => { %>
+                    <label><%= t(label) %>
+                        <select name="<%= field %>" <%= required ? 'required' : '' %>>
+                            <% if (!required) { %><option value=""></option><% } %>
+                            <% customers.forEach(customer => { %>
+                                <option value="<%= customer.id %>" <%= customer.id === Number(timesheet[field]) ? 'selected' : '' %>><%= customer.name %></option>
+                            <% }); %>
+                        </select>
+                    </label>
+                <% }); %>
+                <label><%= t('Hourly rate ($)') %>
+                    <input type="number" name="rate" value="<%= timesheet.rate %>" min="0" step="0.01">
+                </label>
+                <label><%= t('Description') %>
+                    <textarea name="description" rows="4"><%= timesheet.description %></textarea>
+                </label>
+                <div class="form-actions">
+                    <a href="/secure/timesheets" class="button secondary" title="<%= t('Cancel') %>" aria-label="<%= t('Cancel') %>"><%- include('icon', { name: 'clear' }) %></a>
+                    <button type="submit" title="<%= t('Save') %>" aria-label="<%= t('Save') %>"><%- include('icon', { name: 'save' }) %></button>
+                </div>
+            </form>
+<%- include('footer') %>

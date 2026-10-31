@@ -1,0 +1,81 @@
+<%- include('header', { title: t('Payments') }) %>
+<% const money = value => value != null ? value.toFixed(2) + ' $' : ''; %>
+            <div class="toolbar">
+                <h1><%= t('Payments') %></h1>
+            </div>
+
+            <%# The filter fields live in the table and are tied to this form by their form attribute %>
+            <form method="get" action="/secure/payments" id="filters" data-auto-submit></form>
+
+            <div class="table-wrap">
+                <table class="sortable" data-sort-title="<%= t('Sort') %>">
+                    <thead>
+                        <tr><th class="num"><%= t('Week') %></th><th><%= t('Date') %></th><th><%= t('Day') %></th><th><%= t('Client') %></th><th><%= t('Payer') %></th><th class="num"><%= t('Amount') %></th><th></th></tr>
+                        <tr class="filter-row">
+                            <td></td>
+                            <td>
+                                <input type="date" name="from" value="<%= filters.from %>" form="filters" aria-label="<%= t('From') %>" title="<%= t('From') %>">
+                                <input type="date" name="to" value="<%= filters.to %>" form="filters" aria-label="<%= t('To') %>" title="<%= t('To') %>">
+                            </td>
+                            <td></td>
+                            <td>
+                                <select name="customer" form="filters" aria-label="<%= t('Client') %>">
+                                    <option value=""><%= t('All') %></option>
+                                    <% customers.forEach(customer => { %>
+                                        <option value="<%= customer.id %>" <%= String(customer.id) === String(filters.customer) ? 'selected' : '' %>><%= customer.name %></option>
+                                    <% }); %>
+                                </select>
+                            </td>
+                            <td>
+                                <select name="payer" form="filters" aria-label="<%= t('Payer') %>">
+                                    <option value=""><%= t('All') %></option>
+                                    <% payers.forEach(payer => { %>
+                                        <option value="<%= payer.id %>" <%= String(payer.id) === String(filters.payer) ? 'selected' : '' %>><%= payer.name %></option>
+                                    <% }); %>
+                                </select>
+                            </td>
+                            <td></td>
+                            <td class="actions">
+                                <a href="/secure/payments?customer=&payer=&from=&to=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
+                            </td>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% if (rows.length === 0) { %>
+                            <tr><td colspan="7" class="empty"><%= t('No payments for this period.') %></td></tr>
+                        <% } %>
+                        <% rows.forEach(row => { %>
+                            <tr>
+                                <td class="num"><%= row.date ? weekOfYear(row.date) : '' %></td>
+                                <td class="nowrap"><%= row.date %></td>
+                                <td><%= row.date ? dayOfWeek(row.date) : '' %></td>
+                                <td><%= row.customer_name %></td>
+                                <td><%= row.payer_name %></td>
+                                <td class="num"><%= money(row.amount) %></td>
+                                <td class="actions">
+                                    <% if (isAdmin) { %>
+                                    <a href="/secure/payments/<%= row.id %>/edit" class="button small" title="<%= t('Edit') %>" aria-label="<%= t('Edit') %>"><%- include('icon', { name: 'edit' }) %></a>
+                                    <form method="post" action="/secure/payments/<%= row.id %>/delete" class="inline" data-confirm="<%= t('Delete this payment?') %>">
+                                        <input type="hidden" name="_csrf" value="<%= csrf %>">
+                                        <button type="submit" class="small delete" title="<%= t('Delete') %>" aria-label="<%= t('Delete') %>"><%- include('icon', { name: 'delete' }) %></button>
+                                    </form>
+                                    <% } %>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td class="nowrap" colspan="5"><%= rows.length %> <%= rows.length === 1 ? t('payment') : t('payments') %></td>
+                            <td class="num"><%= money(total) %></td>
+                            <td class="actions">
+                                <% if (isAdmin) { %>
+                                <a href="/secure/payments/new" class="button small" title="<%= t('New') %>" aria-label="<%= t('New') %>"><%- include('icon', { name: 'add' }) %></a>
+                                <% } %>
+                                <a href="/secure/payments.csv?<%= query %>" class="button small secondary" title="<%= t('Export CSV') %>" aria-label="<%= t('Export CSV') %>"><%- include('icon', { name: 'download' }) %></a>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+<%- include('footer') %>

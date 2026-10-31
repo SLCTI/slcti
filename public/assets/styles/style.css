@@ -1,6 +1,8 @@
 /* Base Styles */
 html {
     min-height: 100%;
+    /* Keep the scrollbar space so the menu does not shift between short and long pages */
+    scrollbar-gutter: stable;
 }
 
 /* General Reset */

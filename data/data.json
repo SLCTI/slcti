@@ -29,6 +29,8 @@
     
     "contact": { "en-CA": "Contact", "fr-CA": "Contact" },
 
+    "signIn": { "en-CA": "Sign in", "fr-CA": "Connexion" },
+
     "infrastructure": { "en-CA": "Infrastructure", "fr-CA": "Infrastructure" },
     "websiteSize": { "en-CA": "Website Size:", "fr-CA": "Taille du site web :" },
 

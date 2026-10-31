@@ -1,0 +1,113 @@
+<%- include('header', { title: bill ? `${t('Bill')} ${String(bill.number).padStart(3, '0')} - ${bill.month} - ${bill.customer_name}` : 'Bills' }) %>
+<%
+    const money = value => value != null ? value.toFixed(2) + ' $' : '';
+    const label = option => `${String(option.number).padStart(3, '0')} - ${option.month} - ${option.customer_name}`;
+    const key = option => `${option.month}/${option.customer_id}`;
+    const contact = resource => [[resource.first_name, resource.last_name].filter(Boolean).join(' '), resource.title].filter(Boolean).join(', ');
+    const party = resource => [
+        ['Organisation', resource.organisation || resource.code],
+        ['NEQ', resource.neq],
+        ['GST Number', resource.gst_number],
+        ['QST Number', resource.qst_number],
+        ['Bank Account', resource.bank_account],
+        ['Contact', contact(resource)],
+        ['Address', resource.address],
+        ['Telephone', resource.telephone],
+        ['Email', resource.email],
+        ['Website', resource.website]
+    ];
+%>
+            <form method="get" action="/secure/bills" class="bill-picker" data-auto-submit>
+                <h1><%= t('Bills') %></h1>
+                <select name="bill" aria-label="<%= t('Bill') %>" autofocus>
+                    <% options.forEach(option => { %>
+                        <option value="<%= key(option) %>" <%= bill && key(option) === key(bill) ? 'selected' : '' %>><%= label(option) %></option>
+                    <% }); %>
+                </select>
+            </form>
+
+            <% if (!bill) { %>
+                <p class="empty"><%= t('No bills yet.') %></p>
+            <% } else { %>
+                <article class="bill">
+                    <div class="bill-parties">
+                        <section>
+                            <h2><%= t('Service provider') %></h2>
+                            <dl>
+                                <% party(provider).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
+                            </dl>
+                        </section>
+                        <% if (isAdmin) { %>
+                        <section>
+                            <h2><%= t('Client') %></h2>
+                            <dl>
+                                <% party(customer).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
+                            </dl>
+                        </section>
+                        <% } %>
+                        <section>
+                            <h2><%= t('Billed to') %></h2>
+                            <dl>
+                                <% party(billedTo).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
+                            </dl>
+                        </section>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th><%= t('Project') %></th><th><%= t('From') %></th><th><%= t('To') %></th><th class="num"><%= t('Hours') %></th><th class="num"><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><th><%= t('Description') %></th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                <% bill.hourLines.forEach(line => { %>
+                                    <tr>
+                                        <td><%= line.project %></td>
+                                        <td class="nowrap"><%= line.from %></td>
+                                        <td class="nowrap"><%= line.to %></td>
+                                        <td class="num"><%= line.hours.toFixed(2) %></td>
+                                        <td></td>
+                                        <td class="num"><%= money(line.rate) %></td>
+                                        <td class="num"><%= money(line.subtotal) %></td>
+                                        <td class="num"><%= money(line.gst) %></td>
+                                        <td class="num"><%= money(line.qst) %></td>
+                                        <td class="num"><%= money(line.total) %></td>
+                                        <td colspan="2"></td>
+                                    </tr>
+                                <% }); %>
+                                <% bill.expenseLines.forEach(line => { %>
+                                    <tr>
+                                        <td><%= line.project %></td>
+                                        <td class="nowrap"><%= line.date %></td>
+                                        <td class="nowrap"><%= line.date %></td>
+                                        <td></td>
+                                        <td class="num"><%= line.unit %></td>
+                                        <td class="num"><%= money(line.rate) %></td>
+                                        <td class="num"><%= money(line.subtotal) %></td>
+                                        <td class="num"><%= line.gst ? money(line.gst) : '' %></td>
+                                        <td class="num"><%= line.qst ? money(line.qst) : '' %></td>
+                                        <td class="num"><%= money(line.total) %></td>
+                                        <td class="description" colspan="2"><%= line.description %></td>
+                                    </tr>
+                                <% }); %>
+                            </tbody>
+                            <tfoot>
+                                <tr class="total-row">
+                                    <td colspan="3"><%= t('Total') %></td>
+                                    <td class="num"><%= bill.hours.toFixed(2) %></td>
+                                    <td class="num"><%= bill.units ? bill.units.toFixed(2) : '' %></td>
+                                    <td></td>
+                                    <td class="num"><%= money(bill.subtotal) %></td>
+                                    <td class="num"><%= money(bill.gst) %></td>
+                                    <td class="num"><%= money(bill.qst) %></td>
+                                    <td class="num"><%= money(bill.total) %></td>
+                                    <td></td>
+                                    <td class="actions no-print">
+                                        <button type="button" class="button small secondary" data-print title="<%= t('PDF') %>" aria-label="<%= t('PDF') %>"><%- include('icon', { name: 'print' }) %></button>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </article>
+            <% } %>
+<%- include('footer') %>

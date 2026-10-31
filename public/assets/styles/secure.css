@@ -1,0 +1,364 @@
+/* Secure section: tables and forms only; the page, menu and footer come from the site stylesheets */
+.secure-main,
+.secure-main * {
+    box-sizing: border-box;
+}
+
+h1 {
+    font-size: 1.5rem;
+    margin: 0 0 16px;
+}
+
+.secure-main {
+    margin: 0 auto;
+    padding: 75px 16px 64px;
+}
+
+.card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 560px;
+    padding: 24px;
+}
+
+.login {
+    margin: 48px auto;
+    max-width: 360px;
+}
+
+label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.9rem;
+    gap: 4px;
+}
+
+label.check {
+    align-items: center;
+    flex-direction: row;
+    gap: 8px;
+}
+
+input,
+select,
+textarea {
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    font: inherit;
+    padding: 6px 8px;
+}
+
+button,
+.button {
+    background: #007fcc;
+    border: 0;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    display: inline-block;
+    font: inherit;
+    padding: 7px 14px;
+}
+
+button:hover,
+.button:hover {
+    background: #006aab;
+    text-decoration: none;
+}
+
+button.link {
+    background: none;
+    color: #007fcc;
+    padding: 0;
+}
+
+button.link:hover {
+    background: none;
+    text-decoration: underline;
+}
+
+.danger,
+button.link.danger {
+    color: #c0392b;
+}
+
+form.inline {
+    display: inline;
+}
+
+.toolbar {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.toolbar h1 {
+    margin: 0;
+}
+
+/* Filter fields shown as the first row of a table */
+.filter-row td {
+    background: #fafafa;
+    border-bottom: 2px solid #ddd;
+    vertical-align: middle;
+}
+
+.filter-row input,
+.filter-row select {
+    display: block;
+    font-size: 0.85rem;
+    padding: 3px 6px;
+}
+
+.filter-row input + input {
+    margin-top: 4px;
+}
+
+.button.secondary {
+    background: #6c757d;
+}
+
+.button.secondary:hover {
+    background: #5a6268;
+}
+
+.total-row td {
+    background: #fafafa;
+    border-bottom: 0;
+    border-top: 2px solid #ddd;
+    font-weight: bold;
+    vertical-align: middle;
+}
+
+.form-actions {
+    align-items: center;
+    display: flex;
+    gap: 16px;
+}
+
+.error {
+    background: #fdecea;
+    border-radius: 4px;
+    color: #c0392b;
+    margin: 0;
+    padding: 8px 12px;
+}
+
+.empty {
+    color: #777;
+}
+
+.table-wrap {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    overflow-x: auto;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+th,
+td {
+    border-bottom: 1px solid #eee;
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    background: #fafafa;
+    font-size: 0.85rem;
+}
+
+.num {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.nowrap {
+    white-space: nowrap;
+}
+
+/* Long words and URLs must wrap instead of pushing the actions out of view */
+.description {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    width: 100%;
+}
+
+.actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.actions > * + * {
+    margin-left: 12px;
+}
+
+.actions > * + .inline,
+.actions > .button + .button {
+    margin-left: 6px;
+}
+
+button.small,
+.button.small {
+    font-size: 0.85em;
+    padding: 4px 10px;
+}
+
+/* Line icons drawn in the text color of their button */
+svg.icon {
+    fill: none;
+    padding: 0;
+    height: 1.15em;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+    vertical-align: -0.2em;
+    width: 1.15em;
+}
+
+/* Icon buttons are all the same square size */
+button:has(.icon),
+.button:has(.icon) {
+    align-items: center;
+    display: inline-flex;
+    font-size: 0.85rem;
+    height: 2rem;
+    justify-content: center;
+    padding: 0;
+    vertical-align: middle;
+    width: 2rem;
+}
+
+button.delete {
+    background: #c0392b;
+}
+
+button.delete:hover {
+    background: #a93226;
+}
+
+/* Bill */
+.bill-picker {
+    margin-bottom: 16px;
+}
+
+.bill-parties {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    margin-bottom: 16px;
+}
+
+.bill-parties section {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    padding: 16px;
+}
+
+.bill-parties h2 {
+    font-size: 1rem;
+    margin: 0 0 8px;
+    text-transform: uppercase;
+}
+
+.bill-parties dl {
+    display: grid;
+    font-size: 0.9rem;
+    gap: 2px 12px;
+    grid-template-columns: max-content 1fr;
+    margin: 0;
+}
+
+.bill-parties dt {
+    color: #777;
+}
+
+.bill-parties dd {
+    margin: 0;
+}
+
+/* Printing (Save as PDF) shows the document only */
+@media print {
+    @page {
+        margin: 12mm;
+        size: letter landscape;
+    }
+
+    body {
+        background: #fff;
+        font-size: 10pt;
+    }
+
+    .navbar,
+    .footer,
+    .bill-picker,
+    .no-print > * {
+        display: none;
+    }
+
+    .secure-main {
+        padding: 0;
+    }
+
+    .bill-parties section,
+    .table-wrap {
+        box-shadow: none;
+    }
+
+    .bill-parties section {
+        border: 1px solid #ddd;
+    }
+
+    .table-wrap {
+        overflow: visible;
+    }
+
+    th,
+    td {
+        padding: 4px 6px;
+    }
+
+    tr {
+        break-inside: avoid;
+    }
+}
+
+/* Sortable column headers */
+.sort-header {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.sort-icon {
+    font-size: 0.7em;
+    margin-right: 4px;
+    opacity: 0.35;
+}
+
+.sort-header[aria-sort] .sort-icon {
+    opacity: 1;
+}
+
+/* Amounts above or below what was expected */
+.positive {
+    color: #1e8449;
+}
+
+.negative {
+    color: #c0392b;
+}

@@ -1,0 +1,38 @@
+<%- include('header', { title: expense.id ? t('Edit expense') : t('New expense') }) %>
+            <form method="post" action="/secure/expenses<%= expense.id ? '/' + expense.id : '' %>" class="card">
+                <h1><%= expense.id ? t('Edit expense') : t('New expense') %></h1>
+                <% errors.forEach(error => { %><p class="error"><%= t(error) %></p><% }); %>
+                <% if (customers.length === 0) { %>
+                    <p class="error"><%- t('Add a <a href="/secure/resources/new">resource</a> first.') %></p>
+                <% } %>
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <label><%= t('Date') %>
+                    <input type="date" name="start" value="<%= expense.start %>" required>
+                </label>
+                <% [['shipped_resource_id', 'Client', true], ['billed_resource_id', 'Billed to', false], ['assigned_resource_id', 'Assigned to', false]].forEach(([field, label, required]) => { %>
+                    <label><%= t(label) %>
+                        <select name="<%= field %>" <%= required ? 'required' : '' %>>
+                            <% if (!required) { %><option value=""></option><% } %>
+                            <% customers.forEach(customer => { %>
+                                <option value="<%= customer.id %>" <%= customer.id === Number(expense[field]) ? 'selected' : '' %>><%= customer.name %></option>
+                            <% }); %>
+                        </select>
+                    </label>
+                <% }); %>
+                <label><%= t('Units') %>
+                    <input type="number" name="unit" value="<%= expense.unit %>" step="any" required>
+                </label>
+                <label><%= t('Rate ($)') %>
+                    <input type="number" name="rate" value="<%= expense.rate %>" step="any" required>
+                </label>
+                <label class="check"><input type="checkbox" name="gst" value="1" <%= expense.gst ? 'checked' : '' %>> <%= t('GST (5 %)') %></label>
+                <label class="check"><input type="checkbox" name="qst" value="1" <%= expense.qst ? 'checked' : '' %>> <%= t('QST (9.975 %)') %></label>
+                <label><%= t('Description') %>
+                    <textarea name="description" rows="4"><%= expense.description %></textarea>
+                </label>
+                <div class="form-actions">
+                    <a href="/secure/expenses" class="button secondary" title="<%= t('Cancel') %>" aria-label="<%= t('Cancel') %>"><%- include('icon', { name: 'clear' }) %></a>
+                    <button type="submit" title="<%= t('Save') %>" aria-label="<%= t('Save') %>"><%- include('icon', { name: 'save' }) %></button>
+                </div>
+            </form>
+<%- include('footer') %>

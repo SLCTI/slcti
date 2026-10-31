@@ -1,0 +1,36 @@
+<%- include('header', { title: payment.id ? t('Edit payment') : t('New payment') }) %>
+            <form method="post" action="/secure/payments<%= payment.id ? '/' + payment.id : '' %>" class="card">
+                <h1><%= payment.id ? t('Edit payment') : t('New payment') %></h1>
+                <% errors.forEach(error => { %><p class="error"><%= t(error) %></p><% }); %>
+                <% if (customers.length === 0) { %>
+                    <p class="error"><%- t('Add a <a href="/secure/resources/new">resource</a> first.') %></p>
+                <% } %>
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <label><%= t('Date') %>
+                    <input type="date" name="date" value="<%= payment.date %>" required>
+                </label>
+                <label><%= t('Client') %>
+                    <select name="resource_id" required>
+                        <option value=""></option>
+                        <% customers.forEach(customer => { %>
+                            <option value="<%= customer.id %>" <%= customer.id === Number(payment.resource_id) ? 'selected' : '' %>><%= customer.name %></option>
+                        <% }); %>
+                    </select>
+                </label>
+                <label><%= t('Payer') %>
+                    <select name="payer_id">
+                        <option value=""></option>
+                        <% customers.forEach(customer => { %>
+                            <option value="<%= customer.id %>" <%= customer.id === Number(payment.payer_id) ? 'selected' : '' %>><%= customer.name %></option>
+                        <% }); %>
+                    </select>
+                </label>
+                <label><%= t('Amount ($)') %>
+                    <input type="number" name="amount" value="<%= payment.amount %>" step="0.01" required>
+                </label>
+                <div class="form-actions">
+                    <a href="/secure/payments" class="button secondary" title="<%= t('Cancel') %>" aria-label="<%= t('Cancel') %>"><%- include('icon', { name: 'clear' }) %></a>
+                    <button type="submit" title="<%= t('Save') %>" aria-label="<%= t('Save') %>"><%- include('icon', { name: 'save' }) %></button>
+                </div>
+            </form>
+<%- include('footer') %>

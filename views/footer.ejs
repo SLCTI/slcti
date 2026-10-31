@@ -43,15 +43,6 @@
             });
         </script>
 
-        <footer class="footer">
-            <nav class="footer-container">
-                <ul class="footer-items">
-                    <li><%= data.poweredBy[lang] %></li>
-                    <li><%= data.privacy[lang] %></li>
-                    <li><%= data.copyright[lang] %></li>
-                    <li class="bottom-left"><a href="/infrastructure?lang=<%= lang %>">&nbsp;</a></li>
-                </ul>
-            </nav>
-        </footer>
+        <%- include('site_footer') %>
     </body>
 </html>

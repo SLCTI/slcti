@@ -1,0 +1,53 @@
+        <header class="navbar">
+            <nav class="nav-container">
+
+                <!-- Side Menu Button and Logo (back to the home page) -->
+                <div class="logo">
+                    <button id="menu-toggle" class="menu-toggle" aria-label="<%= t('Menu') %>">
+                        <div class="hamburger">&#9776;</div>
+                    </button>
+                    <a href="/?lang=<%= lang %>" class="logo-link">
+                        <img src="/assets/icons/favicon_48x48.png" alt="<%= data.organization[lang] %>">
+                        <div class="title"><%= data.organization[lang] %></div>
+                    </a>
+                </div>
+
+                <!-- Menu -->
+                <div id="menu" class="menu">
+                    <div class="menu-main">
+                        <a href="/?lang=<%= lang %>"><%= data.index[lang] %></a>
+                        <a href="/about?lang=<%= lang %>"><%= data.about[lang] %></a>
+                        <a href="/partners?lang=<%= lang %>"><%= data.partners[lang] %></a>
+                        <a href="/media?lang=<%= lang %>"><%= data.media[lang] %></a>
+                        <a href="/contact?lang=<%= lang %>"><%= data.contact[lang] %></a>
+                    </div>
+                    <% if (locals.session) { %>
+                        <!-- Secure section, shown once signed in -->
+                        <div class="menu-secure">
+                            <% if (locals.isAdmin) { %><a href="/secure/resources"><%= t('Resources') %></a><% } %>
+                            <a href="/secure/timesheets"><%= t('Timesheets') %></a>
+                            <a href="/secure/expenses"><%= t('Expenses') %></a>
+                            <a href="/secure/bills"><%= t('Bills') %></a>
+                            <a href="/secure/payments"><%= t('Payments') %></a>
+                            <a href="/secure/totals"><%= t('Totals') %></a>
+                        </div>
+                    <% } %>
+                    <div class="menu-utility">
+                        <% if (locals.session) { %>
+                            <form method="post" action="/secure/logout" class="menu-form">
+                                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                                <button type="submit" title="<%= session.username %>"><%= t('Log out') %></button>
+                            </form>
+                        <% } else { %>
+                            <a href="/secure/login"><%= data.signIn[lang] %></a>
+                        <% } %>
+                        <% if (lang === 'fr-CA') { %>
+                            <a href="?lang=en-CA"><img src="/assets/icons/en_ca.webp" class="icon icon-flag" alt="Switch to English language">English</a>
+                        <% } else { %>
+                            <a href="?lang=fr-CA"><img src="/assets/icons/fr_ca.webp" class="icon icon-flag" alt="Passer à la langue française">Français</a>
+                        <% } %>
+                    </div>
+                </div>
+
+            </nav>
+        </header>

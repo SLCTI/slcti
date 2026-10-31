@@ -1,0 +1,13 @@
+<%- include('header', { title: t('Log in') }) %>
+            <form method="post" action="/secure/login" class="card login">
+                <h1><%= t('Log in') %></h1>
+                <% if (error) { %><p class="error"><%= t(error) %></p><% } %>
+                <label><%= t('Username') %>
+                    <input name="username" value="<%= username %>" autocomplete="username" required autofocus>
+                </label>
+                <label><%= t('Password') %>
+                    <input name="password" type="password" autocomplete="current-password" required>
+                </label>
+                <button type="submit"><%= t('Log in') %></button>
+            </form>
+<%- include('footer') %>

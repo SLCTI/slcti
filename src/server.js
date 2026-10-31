@@ -5,9 +5,11 @@ const express = require('express');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const os = require('os');
 const path = require('path');
-//const sqlite3 = require('sqlite3').verbose();
 const winston = require('winston');
+const { createSecureRouter, sessionLoader } = require('./secure');
+const { databasePath, openDatabase } = require('./secure_db');
 
 const logsDir = path.join(__dirname, '..', 'logs');
 fs.mkdirSync(logsDir, { recursive: true });
@@ -57,7 +59,9 @@ const logger = winston.createLogger({
 });
 
 async function main() {
-    const config = JSON.parse(await fs.promises.readFile('./config.json', 'utf8'));
+    // Configuration from .env (loaded by secure_db), see .env.example
+    const production = process.env.NODE_ENV === 'production';
+    const certificates = (process.env.SLCTI_CERTIFICATES || '').replace(/^~(?=$|\/)/, os.homedir());
 
     const HOSTNAME = '0.0.0.0';
     const PORT = process.env.PORT || 3000;
@@ -73,8 +77,8 @@ async function main() {
     const imagesDir = path.join(assetsDir, 'images');
     const profileDir = path.join(imagesDir, 'profile');
 
-    //const db = new sqlite3.Database(path.join(dataDir, 'database.db'));
-    //db.close();
+    // Private database for the secure section (resources, timesheets, expenses and payments)
+    const secureDb = await openDatabase(databasePath());
 
     // Error-safe file operations
     let iconFiles = [];
@@ -136,9 +140,6 @@ async function main() {
 
     app.use(cookieParser());
 
-    // Use the CORS middleware to allow requests from any origin
-    app.use(cors());
-
     app.use((req, res, next) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -147,13 +148,13 @@ async function main() {
         next();
     });
 
-    // Serve static files from the assets directory
-    app.use('/assets', express.static(assetsDir));
-
     // Set the view engine to EJS
     app.set('view engine', 'ejs');
     app.set('views', viewsDir);
-      
+
+    // French labels of the secure section and of its menu links, keyed by their English text
+    const french = JSON.parse(await fs.promises.readFile(path.join(dataDir, 'secure.json'), 'utf8'));
+
     // Middleware to set the language
     app.use((req, res, next) => {
         let lang = req.query.lang || req.cookies.lang || DEFAULT_LANGUAGE;
@@ -166,8 +167,24 @@ async function main() {
             secure: true
         });
         res.locals.lang = lang;
+        res.locals.t = text => (lang === 'fr-CA' && french[text]) || text;
         next();
     });
+
+    // Secure section, mounted before CORS so it is never exposed to other origins; it shares the site menu
+    const siteData = JSON.parse(data || '{}');
+
+    app.use('/secure', (req, res, next) => {
+        res.locals.data = siteData;
+        next();
+    });
+    app.use('/secure', createSecureRouter({ db: secureDb, logger, production }));
+
+    // Use the CORS middleware to allow requests from any origin
+    app.use(cors());
+
+    // Serve static files from the assets directory
+    app.use('/assets', express.static(assetsDir));
 
     // Serve static files from the .well-known/acme-challenge directory
     app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known/acme-challenge')));
@@ -183,7 +200,10 @@ async function main() {
     }    
 
     // Route
-    app.get('/:route?', cors(), asyncHandler(async (req, res) => {
+    // Signed-in visitors keep the secure links in the menu on the public pages too
+    const loadSession = sessionLoader(secureDb);
+
+    app.get('/:route?', cors(), loadSession, asyncHandler(async (req, res) => {
         const route = ROUTES.includes(req.params.route) ? req.params.route : "index";
         const view = "body";
         const isNotFound = !ROUTES.includes(req.params.route) && req.params.route !== undefined;
@@ -193,6 +213,9 @@ async function main() {
         const profileImage = profileFiles.length > 0 ? profileFiles[Math.floor(Math.random() * profileFiles.length)] : '';
 
         if (isNotFound) res.status(404);
+
+        // The menu differs once signed in: never cache that version
+        if (req.session) res.setHeader('Cache-Control', 'no-store');
 
         res.render(view, {
             route,
@@ -317,7 +340,7 @@ async function main() {
     app.use((err, req, res, next) => {
         logger.error(`Error occurred: ${err.message}\nStack: ${err.stack}`);
         const response = { message: 'Internal Server Error' };
-        if (config.environment !== 'production') response.error = err.message;
+        if (!production) response.error = err.message;
 
         res.status(500).json(response);
     });
@@ -325,16 +348,16 @@ async function main() {
     // Load SSL certificates (only in production)
     let options = {};
 
-    if (config.environment === 'production') {
+    if (production) {
         options = {
-            cert: await fs.promises.readFile(path.join(config.certificates, 'slcti_ca.crt')),
-            ca: await fs.promises.readFile(path.join(config.certificates, 'slcti_ca.ca-bundle')),
-            key: await fs.promises.readFile(path.join(config.certificates, 'slcti_ca.key'))
+            cert: await fs.promises.readFile(path.join(certificates, 'slcti_ca.crt')),
+            ca: await fs.promises.readFile(path.join(certificates, 'slcti_ca.ca-bundle')),
+            key: await fs.promises.readFile(path.join(certificates, 'slcti_ca.key'))
         };
     }
 
     // Start the server using HTTPS or HTTP
-    if (config.environment === 'production') {
+    if (production) {
         https.createServer(options, app).listen(PORT, HOSTNAME, () => {
             logger.info(`HTTPS Server running at https://${HOSTNAME}:${PORT}/`);
         });

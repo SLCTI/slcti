@@ -1,17 +1,17 @@
-# Resume
+# SLCTI
 A corporate website, including a resume, created from scratch using Node.js.
 
 ## Usage
 1. Install and configure prerequisites ([Node.js](https://nodejs.org/en/download)):
 ```bash
 sudo apt install nodejs npm
-npm install package.json
+npm install
 npm audit fix --force
 sudo ufw allow 3000
 sudo ufw enable
 ```
 ```powershell
-. "C:\Program Files\nodejs\npm" install package.json
+. "C:\Program Files\nodejs\npm" install
 . "C:\Program Files\nodejs\npm" audit fix --force
 . "C:\Program Files\nodejs\node" src/server.js
 ```
@@ -106,6 +106,39 @@ sudo openssl req -new -newkey rsa:2048 -nodes -keyout /etc/ssl/private/slcti.key
 sudo chmod 600 /etc/ssl/private/slcti.key
 sudo chown root:root /etc/ssl/private/slcti.key
 cat /etc/ssl/certs/slcti.csr
+```
+
+### Secure section
+Resources, timesheets, expenses, bills, payments and totals are available at `/secure`. Everything is stored in a single SQLite database, `private/slcti.db`, which is ignored by Git and created on first start. Set `SLCTI_DATABASE` in `.env` to store it elsewhere. The table definitions are in `src/secure_db.js`.
+
+The database is encrypted with SQLCipher. Its key is `SLCTI_DB_KEY` in `.env` (see `.env.example`), which is never committed: keep a copy of it in a password manager, since the data cannot be read without it. SQLite tools without SQLCipher support (such as `sqlite3` or the SQLTools extension) cannot open the file.
+
+Keep every private file (database, backups, source spreadsheets) in `private/` and every secret in `.env`: neither is committed, and `private/` is not served by the web server.
+
+#### Configuration
+All the settings are in `.env` (see `.env.example`): `NODE_ENV` (`development` or `production`), `SLCTI_CERTIFICATES` (folder of the HTTPS certificates, production only), `SLCTI_DATABASE` (optional) and `SLCTI_DB_KEY`. On a new machine, copy `.env` from an existing installation. To start from an empty database instead, copy `.env.example` to `.env` and fill in a new key.
+
+The production settings are kept locally in `.env.production` (same key as `.env`), which `bin/deploy.ps1` sends to the server as `.env`.
+
+#### Deploy
+```powershell
+.\bin\deploy.ps1            # commit, push and deploy the code, and send .env.production as .env
+.\bin\deploy.ps1 -Database  # also replace the production database with the local one
+```
+The code goes through Git; `.env.production` and the database are copied with `scp` and never committed (the script refuses to commit them). The local database is only sent when the server has none yet, or with `-Database`: it then replaces the production data, after a backup of it on the server in `private/backups/`.
+
+#### Create user or change password (on the web server)
+```bash
+cd ~/source/resume
+node src/set_password.js USERNAME [admin|accountant]
+```
+Administrators have full access. Accountants have read-only access to timesheets (without descriptions), expenses, bills (without the client box), payments and totals, but not to resources. New users are accountants unless `admin` is given; the role of an existing user only changes when one is given.
+
+#### Back up the database
+Writes an encrypted copy (same key) to `private/backups/slcti-YYYY-MM-DD.db`:
+```bash
+cd ~/source/resume
+node src/backup_db.js
 ```
 
 ## Contact
