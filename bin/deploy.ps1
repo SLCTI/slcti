@@ -65,6 +65,13 @@ foreach ($Required in '^NODE_ENV=production\s*$', '^SLCTI_CERTIFICATES=\S', '^SL
     }
 }
 
+# The production database comes back to the local one at the end: both must use the same key
+$Key = { param($File) (Get-Content $File | Where-Object { $_ -match '^SLCTI_DB_KEY=' } | Select-Object -First 1) -replace '\s+$', '' }
+
+if ((& $Key .env) -ne (& $Key $ENV_FILE)) {
+    throw "SLCTI_DB_KEY must be the same in .env and $ENV_FILE"
+}
+
 # -------- Local Git --------
 Write-Host "Committing changes..."
 
@@ -216,3 +223,23 @@ ssh $SERVER $Script
 Assert-Success "Deployment failed on the server"
 
 Write-Host "Deployment complete"
+
+# -------- Production Database to Local --------
+# Production holds the reference data: a copy of it is kept in private/backups, and it replaces the local data
+# (backed up first), so the local work is always on current data. Not needed when the local database was just sent.
+if (-not $SendDatabase) {
+    Write-Host "Copying the production database to the local one..."
+
+    $Copy = "private/backups/slcti-production-$(Get-Date -Format 'yyyy-MM-dd-HHmmss').db"
+
+    ssh $SERVER "cd $APP_DIR && node src/backup_db.js private/download.db"
+    Assert-Success "Cannot back up the production database"
+
+    scp -q "${SERVER}:$APP_DIR/private/download.db" $Copy
+    Assert-Success "Cannot copy the production database"
+
+    ssh $SERVER "rm -f $APP_DIR/private/download.db"
+
+    node src/restore_db.js $Copy
+    Assert-Success "Cannot replace the local data (the production copy is in $Copy)"
+}

@@ -127,6 +127,8 @@ The production settings are kept locally in `.env.production` (same key as `.env
 ```
 The code goes through Git; `.env.production` and the database are copied with `scp` and never committed (the script refuses to commit them). The local database is only sent when the server has none yet, or with `-Database`: it then replaces the production data, after a backup of it on the server in `private/backups/`.
 
+At the end, production holds the reference data: a copy of the production database is kept in `private/backups/slcti-production-<time>.db` and replaces the local data (the local data is backed up first to `private/backups/slcti-local-<time>.db`), so local work is always on current data. This works while the local server runs. Both `.env` files must therefore use the same `SLCTI_DB_KEY`. To restore any backup into the local database the same way: `node src/restore_db.js FILE`.
+
 #### Logins and passwords
 Administrators manage the site access on the Resources page: a resource with a role (administrator or accountant) and a password signs in with its email, and choosing *No access* removes its password. Administrators have full access. Accountants have read-only access to timesheets (without descriptions), expenses, bills (without the client box), payments and totals, but not to resources. An administrator cannot remove their own administrator access nor delete their own resource, so there is always one left.
 
