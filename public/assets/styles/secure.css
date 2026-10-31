@@ -9,9 +9,13 @@ h1 {
     margin: 0 0 16px;
 }
 
+/* The full width of the body column (see footer.css): wide tables scroll in their .table-wrap instead of widening the page */
 .secure-main {
+    box-sizing: border-box;
     margin: 0 auto;
+    min-width: 0;
     padding: 75px 16px 64px;
+    width: 100%;
 }
 
 .card {

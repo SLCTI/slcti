@@ -40,10 +40,13 @@
     }
 
     /* The hamburger and the logo sit side by side, above the open menu; each one fixed on its own, they overlapped and the logo caught the taps */
+    /* Opaque across the screen: the links of the open menu scroll under it, not through it */
     .logo {
+        background-color: #333;
         height: 50px;
         left: 0;
         position: fixed;
+        right: 0;
         top: 0;
         z-index: 9997;
     }

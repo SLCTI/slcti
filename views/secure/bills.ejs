@@ -37,6 +37,12 @@
                                 <% party(provider).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
                             </dl>
                         </section>
+                        <section>
+                            <h2><%= t('Billed to') %></h2>
+                            <dl>
+                                <% party(billedTo).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
+                            </dl>
+                        </section>
                         <% if (isAdmin) { %>
                         <section>
                             <h2><%= t('Client') %></h2>
@@ -45,12 +51,6 @@
                             </dl>
                         </section>
                         <% } %>
-                        <section>
-                            <h2><%= t('Billed to') %></h2>
-                            <dl>
-                                <% party(billedTo).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
-                            </dl>
-                        </section>
                     </div>
 
                     <div class="table-wrap">
