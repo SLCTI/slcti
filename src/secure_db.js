@@ -11,25 +11,23 @@ const ENV_FILE = path.resolve(__dirname, '..', '.env');
 
 if (fs.existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
+// Each session belongs to the resource that signed in
+const SESSIONS = `
+    CREATE TABLE IF NOT EXISTS sessions (
+        token_hash TEXT PRIMARY KEY,
+        resource_id INTEGER NOT NULL REFERENCES resource (id) ON DELETE CASCADE,
+        csrf_token TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
+    );
+`;
+
 const SCHEMA = `
     PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
 
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'accountant',
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
+    ${SESSIONS}
 
-    CREATE TABLE IF NOT EXISTS sessions (
-        token_hash TEXT PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        csrf_token TEXT NOT NULL,
-        expires_at INTEGER NOT NULL
-    );
-
+    -- A resource with a role (admin or accountant) and a password signs in with its email
     CREATE TABLE IF NOT EXISTS resource (
         id INTEGER PRIMARY KEY,
         code VARCHAR,
@@ -44,7 +42,9 @@ const SCHEMA = `
         email VARCHAR,
         website VARCHAR,
         telephone VARCHAR,
-        address VARCHAR
+        address VARCHAR,
+        role VARCHAR,
+        password_hash VARCHAR
     );
 
     -- Start and end are stored as "YYYY-MM-DD HH:MM"
@@ -125,16 +125,68 @@ async function openDatabase(file, key = databaseKey()) {
 
     await wrapper.exec(SCHEMA);
 
-    // Roles came after the first users, who all had full access: they stay administrators
-    if (!(await wrapper.all('PRAGMA table_info(users)')).some(column => column.name === 'role')) {
-        await wrapper.exec(`
-            ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'accountant';
-            UPDATE users SET role = 'admin';
-        `);
+    const columns = async table => (await wrapper.all(`PRAGMA table_info(${table})`)).map(column => column.name);
+
+    if (!(await columns('resource')).includes('role')) {
+        await wrapper.exec('ALTER TABLE resource ADD COLUMN role VARCHAR; ALTER TABLE resource ADD COLUMN password_hash VARCHAR;');
     }
+
+    // Sessions belonged to users before; dropping them signs everyone out once
+    if (!(await columns('sessions')).includes('resource_id')) {
+        await wrapper.exec(`DROP TABLE sessions; ${SESSIONS}`);
+    }
+
+    if ((await columns('users')).length) await moveUsers(wrapper, await columns('users'));
+
+    // One login per email
+    await wrapper.exec('CREATE UNIQUE INDEX IF NOT EXISTS ix_resource_login ON resource (lower(email)) WHERE role IS NOT NULL');
 
     return wrapper;
 }
+
+// Logins were in a users table before they moved to resources. Each one goes to the resource it was linked to, else the
+// resource with its email, else the provider for an administrator, else a new resource with its email. Logins that reach
+// the same resource merge: the highest role, and the password of the login that is the resource email (else of the latest)
+async function moveUsers(db, columns) {
+    const role = columns.includes('role') ? 'role' : "'admin' AS role"; // Before roles, every user had full access
+    const linked = columns.includes('resource_id') ? 'resource_id' : 'NULL AS resource_id';
+    const access = new Map();
+
+    await db.exec('BEGIN');
+
+    try {
+        for (const user of await db.all(`SELECT username, password_hash, ${role}, ${linked} FROM users ORDER BY id`)) {
+            const resource = (user.resource_id && await db.get('SELECT id, email FROM resource WHERE id = ?', [user.resource_id]))
+                || await db.get('SELECT id, email FROM resource WHERE lower(email) = lower(?) ORDER BY id', [user.username])
+                || (user.role === 'admin' && await db.get('SELECT id, email FROM resource WHERE code = ?', [PROVIDER_CODE]))
+                || { id: (await db.run('INSERT INTO resource (code, email) VALUES (?, ?)', [user.username.split('@')[0], user.username])).lastInsertRowid, email: user.username };
+            const own = String(resource.email).toLowerCase() === user.username.toLowerCase();
+            const merged = access.get(resource.id);
+
+            access.set(resource.id, {
+                role: user.role === 'admin' || (merged && merged.role === 'admin') ? 'admin' : 'accountant',
+                password_hash: !merged || own || !merged.own ? user.password_hash : merged.password_hash,
+                own: own || Boolean(merged && merged.own)
+            });
+        }
+
+        for (const [id, login] of access) {
+            await db.run('UPDATE resource SET role = ?, password_hash = ? WHERE id = ?', [login.role, login.password_hash, id]);
+        }
+
+        await db.exec('DROP TABLE users; COMMIT');
+    } catch (err) {
+        await db.exec('ROLLBACK');
+        throw err;
+    }
+}
+
+// Logins and passwords, shared by the Resources page and set_password.js
+const ROLES = ['admin', 'accountant'];
+const PASSWORD_MIN_LENGTH = 12;
+
+// The resource of the business itself: the provider of the bills
+const PROVIDER_CODE = 'SLCTI';
 
 // Password hashes are stored as "scrypt$<salt>$<hash>"
 async function hashPassword(password) {
@@ -155,4 +207,4 @@ async function verifyPassword(password, stored) {
     return crypto.timingSafeEqual(actual, expected);
 }
 
-module.exports = { databasePath, openDatabase, hashPassword, verifyPassword };
+module.exports = { databasePath, openDatabase, hashPassword, verifyPassword, ROLES, PASSWORD_MIN_LENGTH, PROVIDER_CODE };

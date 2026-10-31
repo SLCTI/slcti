@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
-const { hashPassword, verifyPassword } = require('./secure_db');
+const { hashPassword, verifyPassword, ROLES, PASSWORD_MIN_LENGTH, PROVIDER_CODE } = require('./secure_db');
 
 const SESSION_COOKIE = 'sid';
 const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
@@ -85,10 +85,10 @@ function sessionLoader(db) {
 
         if (token) {
             const session = await db.get(
-                `SELECT s.token_hash, s.user_id, s.csrf_token, u.username, u.role
+                `SELECT s.token_hash, s.resource_id, s.csrf_token, r.email AS username, r.role
                  FROM sessions s
-                 JOIN users u ON u.id = s.user_id
-                 WHERE s.token_hash = ? AND s.expires_at > ?`,
+                 JOIN resource r ON r.id = s.resource_id
+                 WHERE s.token_hash = ? AND s.expires_at > ? AND r.role IS NOT NULL`,
                 [sha256(token), Date.now()]
             );
 
@@ -168,7 +168,8 @@ function createSecureRouter({ db, logger, production }) {
             return res.status(429).render('secure/login', { error: 'Too many attempts. Please try again later.', username });
         }
 
-        const user = await db.get('SELECT id, password_hash FROM users WHERE username = ?', [username]);
+        // The email of a resource with a site access
+        const user = await db.get('SELECT id, password_hash FROM resource WHERE lower(email) = lower(?) AND role IS NOT NULL', [username]);
 
         // Always verify a hash so that unknown usernames take as long as known ones
         const valid = await verifyPassword(password, user ? user.password_hash : await dummyHash);
@@ -184,7 +185,7 @@ function createSecureRouter({ db, logger, production }) {
 
             logger.warn(`Failed login for "${username}" from ${req.ip}`);
 
-            return res.status(401).render('secure/login', { error: 'Invalid username or password.', username });
+            return res.status(401).render('secure/login', { error: 'Invalid email or password.', username });
         }
 
         attempts.delete(req.ip);
@@ -193,7 +194,7 @@ function createSecureRouter({ db, logger, production }) {
 
         await db.run('DELETE FROM sessions WHERE expires_at <= ?', [now]);
         await db.run(
-            'INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at) VALUES (?, ?, ?, ?)',
+            'INSERT INTO sessions (token_hash, resource_id, csrf_token, expires_at) VALUES (?, ?, ?, ?)',
             [sha256(token), user.id, randomToken(), now + SESSION_TTL]
         );
 
@@ -574,7 +575,6 @@ function createSecureRouter({ db, logger, production }) {
     }));
 
     // Bills: calculated, one per month and client; the bill is sent to the payer, else to the billed resource, else to the client
-    const PROVIDER_CODE = 'SLCTI';
     // Round half-cents up like Excel (35.9 * 0.75 is stored as 26.924999... but must give 26.93)
     const round = value => Number(Math.round(Number(value.toFixed(8) + 'e2')) + 'e-2');
     const pad = n => String(n).padStart(2, '0');
@@ -944,26 +944,52 @@ function createSecureRouter({ db, logger, production }) {
       + (SELECT COUNT(*) FROM expense x WHERE r.id IN (x.billed_resource_id, x.shipped_resource_id, x.assigned_resource_id))
       + (SELECT COUNT(*) FROM payment x WHERE r.id IN (x.resource_id, x.payer_id))`;
 
+    // Never the password hash: the pages only need to know whether a resource has a site access
+    const RESOURCE_COLUMNS = `r.id, ${RESOURCE_FIELDS.map(field => `r.${field}`).join(', ')}, r.role, ${resourceName('r')} AS name`;
+
+    const RESOURCE_ERRORS = {
+        in_use: 'This resource is used by timesheets, expenses or payments and cannot be deleted.',
+        own: 'You cannot delete your own resource.'
+    };
+
     router.get('/resources', asyncHandler(async (req, res) => {
-        const resources = await db.all(
-            `SELECT r.*, ${resourceName('r')} AS name
-             FROM resource r
-             ORDER BY name COLLATE NOCASE`
-        );
+        const resources = await db.all(`SELECT ${RESOURCE_COLUMNS} FROM resource r ORDER BY name COLLATE NOCASE`);
 
-        const error = req.query.error === 'in_use' ? 'This resource is used by timesheets, expenses or payments and cannot be deleted.' : null;
-
-        res.render('secure/resources', { resources, error });
+        res.render('secure/resources', { resources, error: RESOURCE_ERRORS[req.query.error] || null });
     }));
 
-    function readResource(body) {
+    // A resource and its site access: no role, or a role and a password, its email being the login
+    async function readResource(body, id, session) {
         const resource = Object.fromEntries(RESOURCE_FIELDS.map(field => [field, text(body[field])]));
+        const role = ROLES.includes(body.role) ? body.role : null;
+        const password = String(body.password || '');
+        const current = id ? await db.get('SELECT role FROM resource WHERE id = ?', [id]) : null;
         const errors = [];
 
         if (!resource.code) errors.push('Code is required.');
         if (resource.email && !/^[^\s@]+@[^\s@]+$/.test(resource.email)) errors.push('Email is invalid.');
+        if (id && Number(id) === session.resource_id && role !== 'admin') errors.push('You cannot remove your own administrator access.');
 
-        return { resource, errors };
+        if (role) {
+            const taken = resource.email && await db.get('SELECT 1 FROM resource WHERE lower(email) = lower(?) AND role IS NOT NULL AND id != ?', [resource.email, id || 0]);
+
+            if (!resource.email) errors.push('A site access needs an email, which is its login.');
+            else if (taken) errors.push('Another resource with a site access already has this email.');
+            if (!(current && current.role) && !password) errors.push('A password is required for a new site access.');
+            if (password && password.length < PASSWORD_MIN_LENGTH) errors.push('Password must be at least 12 characters.');
+            if (password !== String(body.password_confirm || '')) errors.push('Passwords do not match.');
+        }
+
+        return { resource: { ...resource, id, role, has_access: Boolean(current && current.role) }, password, errors };
+    }
+
+    // No role removes the password and signs the resource out; a new password signs out its other sessions
+    async function saveAccess(id, role, password, session) {
+        const hash = role && password ? await hashPassword(password) : null;
+
+        await db.run('UPDATE resource SET role = ?, password_hash = CASE WHEN ? IS NULL THEN NULL ELSE COALESCE(?, password_hash) END WHERE id = ?', [role, role, hash, id]);
+
+        if (!role || hash) await db.run('DELETE FROM sessions WHERE resource_id = ? AND token_hash != ?', [id, session.token_hash]);
     }
 
     const renderResourceForm = (res, resource, errors = []) =>
@@ -972,29 +998,33 @@ function createSecureRouter({ db, logger, production }) {
     router.get('/resources/new', (req, res) => renderResourceForm(res, {}));
 
     router.post('/resources', asyncHandler(async (req, res) => {
-        const { resource, errors } = readResource(req.body);
+        const { resource, password, errors } = await readResource(req.body, null, req.session);
 
         if (errors.length) return renderResourceForm(res, resource, errors);
 
-        await db.run(
+        const { lastInsertRowid } = await db.run(
             `INSERT INTO resource (${RESOURCE_FIELDS.join(', ')}) VALUES (${RESOURCE_FIELDS.map(() => '?').join(', ')})`,
             RESOURCE_FIELDS.map(field => resource[field])
         );
+
+        await saveAccess(lastInsertRowid, resource.role, password, req.session);
         res.redirect('/secure/resources');
     }));
 
     router.get('/resources/:id/edit', asyncHandler(async (req, res, next) => {
-        const resource = await db.get('SELECT * FROM resource WHERE id = ?', [req.params.id]);
+        const resource = await db.get(`SELECT ${RESOURCE_COLUMNS} FROM resource r WHERE r.id = ?`, [req.params.id]);
 
         if (!resource) return next();
 
-        renderResourceForm(res, resource);
+        renderResourceForm(res, { ...resource, has_access: Boolean(resource.role) });
     }));
 
-    router.post('/resources/:id', asyncHandler(async (req, res) => {
-        const { resource, errors } = readResource(req.body);
+    router.post('/resources/:id', asyncHandler(async (req, res, next) => {
+        const existing = await db.get('SELECT id FROM resource WHERE id = ?', [req.params.id]);
 
-        resource.id = req.params.id;
+        if (!existing) return next();
+
+        const { resource, password, errors } = await readResource(req.body, existing.id, req.session);
 
         if (errors.length) return renderResourceForm(res, resource, errors);
 
@@ -1002,14 +1032,17 @@ function createSecureRouter({ db, logger, production }) {
             `UPDATE resource SET ${RESOURCE_FIELDS.map(field => `${field} = ?`).join(', ')} WHERE id = ?`,
             [...RESOURCE_FIELDS.map(field => resource[field]), resource.id]
         );
+        await saveAccess(resource.id, resource.role, password, req.session);
         res.redirect('/secure/resources');
     }));
 
     router.post('/resources/:id/delete', asyncHandler(async (req, res) => {
         const used = await db.get(`SELECT ${countUses} AS count FROM resource r WHERE r.id = ?`, [req.params.id]);
 
+        if (Number(req.params.id) === req.session.resource_id) return res.redirect('/secure/resources?error=own');
         if (used && used.count > 0) return res.redirect('/secure/resources?error=in_use');
 
+        // Its sessions go with it
         await db.run('DELETE FROM resource WHERE id = ?', [req.params.id]);
         res.redirect('/secure/resources');
     }));

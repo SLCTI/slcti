@@ -11,10 +11,9 @@
     "Menu": "Menu",
 
     "Log in": "Connexion",
-    "Username": "Nom d'utilisateur",
     "Password": "Mot de passe",
     "Too many attempts. Please try again later.": "Trop de tentatives. Veuillez réessayer plus tard.",
-    "Invalid username or password.": "Nom d'utilisateur ou mot de passe invalide.",
+    "Invalid email or password.": "Courriel ou mot de passe invalide.",
 
     "Week": "Sem.",
     "Date": "Date",
@@ -122,5 +121,21 @@
     "Wed": "mer.",
     "Thu": "jeu.",
     "Fri": "ven.",
-    "Sat": "sam."
+    "Sat": "sam.",
+
+    "Access": "Accès",
+    "Role": "Rôle",
+    "No access": "Aucun accès",
+    "Accountant (read-only)": "Comptable (lecture seule)",
+    "Accountant": "Comptable",
+    "Administrator": "Administrateur",
+    "New password": "Nouveau mot de passe",
+    "Confirm password": "Confirmer le mot de passe",
+    "Password must be at least 12 characters.": "Le mot de passe doit contenir au moins 12 caractères.",
+    "Passwords do not match.": "Les mots de passe ne correspondent pas.",
+    "You cannot remove your own administrator access.": "Vous ne pouvez pas retirer votre propre accès administrateur.",
+    "You cannot delete your own resource.": "Vous ne pouvez pas supprimer votre propre ressource.",
+    "A site access needs an email, which is its login.": "Un accès au site nécessite un courriel, qui sert d'identifiant.",
+    "Another resource with a site access already has this email.": "Une autre ressource ayant un accès au site utilise déjà ce courriel.",
+    "A password is required for a new site access.": "Un mot de passe est requis pour un nouvel accès au site."
 }

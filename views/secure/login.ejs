@@ -2,8 +2,9 @@
             <form method="post" action="/secure/login" class="card login">
                 <h1><%= t('Log in') %></h1>
                 <% if (error) { %><p class="error"><%= t(error) %></p><% } %>
-                <label><%= t('Username') %>
-                    <input name="username" value="<%= username %>" autocomplete="username" required autofocus>
+                <%# The email of a resource with a site access %>
+                <label><%= t('Email') %>
+                    <input type="email" name="username" value="<%= username %>" autocomplete="username" required autofocus>
                 </label>
                 <label><%= t('Password') %>
                     <input name="password" type="password" autocomplete="current-password" required>

@@ -11,7 +11,7 @@
                 <div class="table-wrap">
                     <table class="sortable" data-sort-title="<%= t('Sort') %>">
                         <thead>
-                            <tr><th><%= t('Code') %></th><th><%= t('Contact') %></th><th><%= t('Organisation') %></th><th><%= t('Email') %></th><th><%= t('Phone') %></th><th></th></tr>
+                            <tr><th><%= t('Code') %></th><th><%= t('Contact') %></th><th><%= t('Organisation') %></th><th><%= t('Email') %></th><th><%= t('Access') %></th><th><%= t('Phone') %></th><th></th></tr>
                         </thead>
                         <tbody>
                             <% resources.forEach(resource => { %>
@@ -20,6 +20,7 @@
                                     <td><%= [resource.first_name, resource.last_name].filter(Boolean).join(' ') %></td>
                                     <td><%= resource.organisation %></td>
                                     <td><% if (resource.email) { %><a href="mailto:<%= resource.email %>"><%= resource.email %></a><% } %></td>
+                                    <td><% if (resource.role) { %><%= t(resource.role === 'admin' ? 'Administrator' : 'Accountant') %><% } %></td>
                                     <td class="nowrap"><% if (resource.telephone) { %><a href="tel:<%= resource.telephone.replace(/[^\d+,]/g, '') %>"><%= resource.telephone %></a><% } %></td>
                                     <td class="actions">
                                         <a href="/secure/resources/<%= resource.id %>/edit" class="button small" title="<%= t('Edit') %>" aria-label="<%= t('Edit') %>"><%- include('icon', { name: 'edit' }) %></a>
@@ -29,7 +30,7 @@
                         </tbody>
                         <tfoot>
                             <tr class="total-row">
-                                <td colspan="5"><%= resources.length %> <%= resources.length === 1 ? t('resource') : t('resources') %></td>
+                                <td colspan="6"><%= resources.length %> <%= resources.length === 1 ? t('resource') : t('resources') %></td>
                                 <td class="actions">
                                     <a href="/secure/resources/new" class="button small" title="<%= t('New resource') %>" aria-label="<%= t('New resource') %>"><%- include('icon', { name: 'add' }) %></a>
                                 </td>

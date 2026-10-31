@@ -127,12 +127,15 @@ The production settings are kept locally in `.env.production` (same key as `.env
 ```
 The code goes through Git; `.env.production` and the database are copied with `scp` and never committed (the script refuses to commit them). The local database is only sent when the server has none yet, or with `-Database`: it then replaces the production data, after a backup of it on the server in `private/backups/`.
 
-#### Create user or change password (on the web server)
+#### Logins and passwords
+Administrators manage the site access on the Resources page: a resource with a role (administrator or accountant) and a password signs in with its email, and choosing *No access* removes its password. Administrators have full access. Accountants have read-only access to timesheets (without descriptions), expenses, bills (without the client box), payments and totals, but not to resources. An administrator cannot remove their own administrator access nor delete their own resource, so there is always one left.
+
+To give a site access or reset a password without the site (for example, when nobody can sign in), on the web server:
 ```bash
 cd ~/source/resume
-node src/set_password.js USERNAME [admin|accountant]
+node src/set_password.js EMAIL [admin|accountant]
 ```
-Administrators have full access. Accountants have read-only access to timesheets (without descriptions), expenses, bills (without the client box), payments and totals, but not to resources. New users are accountants unless `admin` is given; the role of an existing user only changes when one is given.
+It uses the resource with this email, or creates one.
 
 #### Back up the database
 Writes an encrypted copy (same key) to `private/backups/slcti-YYYY-MM-DD.db`:
