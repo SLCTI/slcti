@@ -1,8 +1,6 @@
 .ssl/
 .vscode/
 .well-known/acme-challenge/*
-bin/deploy.ps1
-bin/deploy.sh
 logs/
 node_modules/
 private/

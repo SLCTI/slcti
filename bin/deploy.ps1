@@ -1,6 +1,6 @@
 # Usage: .\bin\deploy.ps1 [-Database]
 # Commits and pushes the code, then deploys it on the server with .env.production as its .env.
-# The settings and the database never go through Git: they are copied with scp.
+# The server comes from DEPLOY_* in the local .env; the settings and the database never go through Git: they are copied with scp.
 
 param(
     # Also replace the production database with the local one (otherwise it is only sent when the server has none)
@@ -17,12 +17,6 @@ $SECONDS      = 1
 $REMOTE = "origin"
 $BRANCH = "main"
 
-$USER    = ""
-$HOST_   = "www.slcti.ca"
-$APP_DIR = "source/resume" # From the home folder on the server
-$SERVICE = "resume.service"
-$SERVER  = "$USER@$HOST_"
-
 $ENV_FILE = ".env.production" # Sent as .env
 $DB_FILE  = "private/slcti.db"
 
@@ -34,6 +28,29 @@ function Assert-Success($Message) {
 }
 
 Set-Location (Split-Path $PSScriptRoot -Parent)
+
+# -------- Server (DEPLOY_* in the local .env, see .env.example) --------
+if (-not (Test-Path .env)) {
+    throw ".env is missing (see .env.example)"
+}
+
+$Local = @{}
+
+foreach ($Line in Get-Content .env) {
+    if ($Line -match '^\s*(DEPLOY_\w+)\s*=\s*(.*?)\s*$') {
+        $Local[$Matches[1]] = $Matches[2]
+    }
+}
+
+foreach ($Name in 'DEPLOY_USER', 'DEPLOY_HOST', 'DEPLOY_DIR', 'DEPLOY_SERVICE') {
+    if (-not $Local[$Name]) {
+        throw "$Name is missing from .env (see .env.example)"
+    }
+}
+
+$APP_DIR = $Local.DEPLOY_DIR
+$SERVICE = $Local.DEPLOY_SERVICE
+$SERVER  = "$($Local.DEPLOY_USER)@$($Local.DEPLOY_HOST)"
 
 # -------- Checks --------
 if (-not (Test-Path $ENV_FILE)) {
@@ -139,15 +156,13 @@ trap 'rm -f private/env.upload private/slcti.db.upload' EXIT
 sed -i 's/\r$//' private/env.upload
 grep -q '^NODE_ENV=production' private/env.upload || { echo The settings are not a production configuration; exit 1; }
 
-# process.loadEnvFile needs Node.js 20.12 or later
-node -e 'process.exit(typeof process.loadEnvFile === typeof Function ? 0 : 1)' || { echo Node.js 20.12 or later is required; exit 1; }
-
 echo Updating code...
 git fetch origin
 git reset --hard origin/main
 
+# Stop before the restart when the server Node.js is too old for a package (better-sqlite3-multiple-ciphers needs 22+)
 echo Installing dependencies...
-npm install
+npm install --engine-strict
 
 echo Cleaning build artifacts...
 rm -rf .next .cache dist tmp
@@ -179,9 +194,20 @@ rm -f config.json
 echo Restarting service...
 sudo systemctl daemon-reload
 sudo systemctl restart __SERVICE__
-sleep 3
+
+# A crashing service looks active between its automatic restarts: wait until the site answers instead
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 2
+    if curl -sk -o /dev/null --max-time 3 https://localhost:3000/; then
+        systemctl status __SERVICE__ --no-pager
+        exit 0
+    fi
+done
+
 systemctl status __SERVICE__ --no-pager || true
-systemctl is-active --quiet __SERVICE__ || { echo The service did not start; exit 1; }
+journalctl -u __SERVICE__ -n 20 --no-pager || true
+echo The site does not answer on https://localhost:3000/
+exit 1
 '@
 
 $Script = $Script.Replace("__APP_DIR__", $APP_DIR).Replace("__SERVICE__", $SERVICE).Replace("__SEND_DATABASE__", [int][bool]$SendDatabase).Replace("`r", "")

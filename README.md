@@ -118,7 +118,7 @@ Keep every private file (database, backups, source spreadsheets) in `private/` a
 #### Configuration
 All the settings are in `.env` (see `.env.example`): `NODE_ENV` (`development` or `production`), `SLCTI_CERTIFICATES` (folder of the HTTPS certificates, production only), `SLCTI_DATABASE` (optional) and `SLCTI_DB_KEY`. On a new machine, copy `.env` from an existing installation. To start from an empty database instead, copy `.env.example` to `.env` and fill in a new key.
 
-The production settings are kept locally in `.env.production` (same key as `.env`), which `bin/deploy.ps1` sends to the server as `.env`.
+The production settings are kept locally in `.env.production` (same key as `.env`), which `bin/deploy.ps1` sends to the server as `.env`. The server it deploys to is set by `DEPLOY_USER`, `DEPLOY_HOST`, `DEPLOY_DIR` and `DEPLOY_SERVICE` in the local `.env`.
 
 #### Deploy
 ```powershell

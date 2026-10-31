@@ -1,8 +1,16 @@
+/* The footer stays at the bottom of the screen, but the page ends above it instead of scrolling behind it:
+   it closes the body column (pushed down on short pages) and sticks to the bottom while scrolling */
+body {
+    display: flex;
+    flex-direction: column;
+}
+
 .footer {
     background-color: #333;
     bottom: 0;
     color: white;
-    position: fixed;
+    margin-top: auto;
+    position: sticky;
     width: 100%;
     z-index: 9999;
 }

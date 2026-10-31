@@ -4,7 +4,10 @@
                 <!-- Side Menu Button and Logo (back to the home page) -->
                 <div class="logo">
                     <button id="menu-toggle" class="menu-toggle" aria-label="<%= t('Menu') %>">
-                        <div class="hamburger">&#9776;</div>
+                        <%# Drawn rather than the ☰ character, which fonts place below the middle of the line %>
+                        <svg class="hamburger" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                            <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                        </svg>
                     </button>
                     <a href="/?lang=<%= lang %>" class="logo-link">
                         <img src="/assets/icons/favicon_48x48.png" alt="<%= data.organization[lang] %>">
