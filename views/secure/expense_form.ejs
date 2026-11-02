@@ -9,16 +9,13 @@
                 <label><%= t('Date') %>
                     <input type="date" name="start" value="<%= expense.start %>" required>
                 </label>
-                <% [['shipped_resource_id', 'Client', true], ['billed_resource_id', 'Billed to', false], ['assigned_resource_id', 'Assigned to', false]].forEach(([field, label, required]) => { %>
-                    <label><%= t(label) %>
-                        <select name="<%= field %>" <%= required ? 'required' : '' %>>
-                            <% if (!required) { %><option value=""></option><% } %>
-                            <% customers.forEach(customer => { %>
-                                <option value="<%= customer.id %>" <%= customer.id === Number(expense[field]) ? 'selected' : '' %>><%= customer.name %></option>
-                            <% }); %>
-                        </select>
-                    </label>
-                <% }); %>
+                <label><%= t('Client') %>
+                    <select name="shipped_resource_id" required>
+                        <% customers.forEach(customer => { %>
+                            <option value="<%= customer.id %>" <%= customer.id === Number(expense.shipped_resource_id) ? 'selected' : '' %>><%= customer.name %></option>
+                        <% }); %>
+                    </select>
+                </label>
                 <label><%= t('Units') %>
                     <input type="number" name="unit" value="<%= expense.unit %>" step="any" required>
                 </label>

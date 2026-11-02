@@ -14,8 +14,12 @@
                         <tr class="filter-row">
                             <td></td>
                             <td>
-                                <input type="date" name="from" value="<%= filters.from %>" form="filters" aria-label="<%= t('From') %>" title="<%= t('From') %>">
-                                <input type="date" name="to" value="<%= filters.to %>" form="filters" aria-label="<%= t('To') %>" title="<%= t('To') %>">
+                                <select name="month" form="filters" aria-label="<%= t('Month') %>" title="<%= t('Month') %>">
+                                    <option value=""><%= t('All') %></option>
+                                    <% months.forEach(month => { %>
+                                        <option value="<%= month %>" <%= month === filters.month ? 'selected' : '' %>><%= month %></option>
+                                    <% }); %>
+                                </select>
                             </td>
                             <td></td>
                             <td>
@@ -28,7 +32,7 @@
                             </td>
                             <td colspan="7"></td>
                             <td class="actions">
-                                <a href="/secure/expenses?customer=&from=&to=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
+                                <a href="/secure/expenses?customer=&month=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
                             </td>
                         </tr>
                     </thead>

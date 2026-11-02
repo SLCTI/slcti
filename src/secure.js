@@ -38,21 +38,15 @@ const number = value => {
 
 const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && !isNaN(new Date(value));
 
-function currentMonth() {
+// The lists are filtered by a month picked among the months of their data ("YYYY-MM"): the current month by default,
+// else the latest one; an empty month shows every date
+function pickMonth(query, months) {
     const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    return {
-        from: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`,
-        to: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(last)}`
-    };
-}
+    if (query.month === undefined) return months.includes(current) ? current : months[months.length - 1] || '';
 
-function currentYear() {
-    const year = new Date().getFullYear();
-
-    return { from: `${year}-01-01`, to: `${year}-12-31` };
+    return months.includes(query.month) ? query.month : '';
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -252,29 +246,29 @@ function createSecureRouter({ db, logger, production }) {
     const HOURS = `ROUND((julianday(t."end") - julianday(t.start)) * 24, 2)`;
     const resourceName = alias => `${alias}.code`;
 
-    // Customer and date range filters shared by the timesheet and expense lists
-    function readFilters(query, alias, own) {
-        // Default to the current month only when neither date is given
-        const defaults = query.from === undefined && query.to === undefined ? currentMonth() : { from: '', to: '' };
-        const filters = {
-            customer: query.customer || '',
-            from: query.from ?? defaults.from,
-            to: query.to ?? defaults.to
-        };
+    // Customer and month filters shared by the timesheet and expense lists
+    function readFilters(query, alias, own, months) {
+        const filters = { customer: query.customer || '', month: pickMonth(query, months) };
         const conditions = [];
         const params = [];
 
         if (own) { conditions.push(`(${alias}.shipped_resource_id = ? OR ${alias}.billed_resource_id = ?)`); params.push(own, own); }
         if (filters.customer) { conditions.push(`${alias}.shipped_resource_id = ?`); params.push(filters.customer); }
-        if (isDate(filters.from)) { conditions.push(`date(${alias}.start) >= ?`); params.push(filters.from); }
-        if (isDate(filters.to)) { conditions.push(`date(${alias}.start) <= ?`); params.push(filters.to); }
+        if (filters.month) { conditions.push(`substr(${alias}.start, 1, 7) = ?`); params.push(filters.month); }
 
         return { filters, where: conditions.length ? 'WHERE ' + conditions.join(' AND ') : '', params };
     }
 
+    // The months found in a date column of a table (a client's own rows only), in chronological order
+    const listMonths = async (table, column, own, ownColumns = ['shipped_resource_id', 'billed_resource_id']) => (await db.all(
+        `SELECT DISTINCT substr(x.${column}, 1, 7) AS month FROM ${table} x
+         WHERE x.${column} IS NOT NULL${own ? ` AND (${ownColumns.map(c => `x.${c} = ?`).join(' OR ')})` : ''}
+         ORDER BY month ASC`, own ? ownColumns.map(() => own) : [])).map(row => row.month);
+
     // Descriptions are only shown to administrators
     async function findTimesheets(query, isAdmin, own) {
-        const { filters, where, params } = readFilters(query, 't', own);
+        const months = await listMonths('timesheet', 'start', own);
+        const { filters, where, params } = readFilters(query, 't', own, months);
         const rows = await db.all(
             `SELECT t.*, ${HOURS} AS hours,
                     ${resourceName('s')} AS customer_name,
@@ -289,7 +283,7 @@ function createSecureRouter({ db, logger, production }) {
             params
         );
 
-        return { filters, rows: isAdmin ? rows : rows.map(({ description, ...row }) => row) };
+        return { filters, months, rows: isAdmin ? rows : rows.map(({ description, ...row }) => row) };
     }
 
     const listCustomers = () => db.all(`SELECT r.id, ${resourceName('r')} AS name FROM resource r ORDER BY name COLLATE NOCASE`);
@@ -305,7 +299,7 @@ function createSecureRouter({ db, logger, production }) {
     );
 
     router.get('/timesheets', asyncHandler(async (req, res) => {
-        const { filters, rows } = await findTimesheets(req.query, res.locals.isAdmin, ownId(req));
+        const { filters, months, rows } = await findTimesheets(req.query, res.locals.isAdmin, ownId(req));
         const customers = await listUsedResources('timesheet', 'shipped_resource_id', ownId(req));
         const totals = rows.reduce((acc, row) => {
             acc.hours += row.hours || 0;
@@ -314,7 +308,7 @@ function createSecureRouter({ db, logger, production }) {
             return acc;
         }, { hours: 0, amount: 0 });
 
-        res.render('secure/timesheets', { filters, rows, customers, totals, query: new URLSearchParams(filters).toString() });
+        res.render('secure/timesheets', { filters, months, rows, customers, totals, query: new URLSearchParams(filters).toString() });
     }));
 
     router.get('/timesheets.csv', asyncHandler(async (req, res) => {
@@ -445,7 +439,8 @@ function createSecureRouter({ db, logger, production }) {
     const QST = `CASE WHEN e.qst = 1 THEN ROUND(${SUBTOTAL} * ${QST_RATE} + 1e-9, 2) ELSE 0 END`;
 
     async function findExpenses(query, own) {
-        const { filters, where, params } = readFilters(query, 'e', own);
+        const months = await listMonths('expense', 'start', own);
+        const { filters, where, params } = readFilters(query, 'e', own, months);
         const rows = await db.all(
             `SELECT e.*, ${SUBTOTAL} AS subtotal, ${GST} AS gst_amount, ${QST} AS qst_amount,
                     ${SUBTOTAL} + ${GST} + ${QST} AS total,
@@ -461,11 +456,11 @@ function createSecureRouter({ db, logger, production }) {
             params
         );
 
-        return { filters, rows };
+        return { filters, months, rows };
     }
 
     router.get('/expenses', asyncHandler(async (req, res) => {
-        const { filters, rows } = await findExpenses(req.query, ownId(req));
+        const { filters, months, rows } = await findExpenses(req.query, ownId(req));
         const customers = await listUsedResources('expense', 'shipped_resource_id', ownId(req));
         const totals = rows.reduce((acc, row) => {
             acc.subtotal += row.subtotal;
@@ -476,7 +471,7 @@ function createSecureRouter({ db, logger, production }) {
             return acc;
         }, { subtotal: 0, gst: 0, qst: 0, total: 0 });
 
-        res.render('secure/expenses', { filters, rows, customers, totals, query: new URLSearchParams(filters).toString() });
+        res.render('secure/expenses', { filters, months, rows, customers, totals, query: new URLSearchParams(filters).toString() });
     }));
 
     router.get('/expenses.csv', asyncHandler(async (req, res) => {
@@ -503,9 +498,7 @@ function createSecureRouter({ db, logger, production }) {
 
     function readExpense(body) {
         const expense = {
-            billed_resource_id: resourceId(body.billed_resource_id),
             shipped_resource_id: resourceId(body.shipped_resource_id),
-            assigned_resource_id: resourceId(body.assigned_resource_id),
             start: text(body.start),
             unit: number(body.unit),
             rate: number(body.rate),
@@ -522,7 +515,10 @@ function createSecureRouter({ db, logger, production }) {
         return { expense, errors };
     }
 
-    const EXPENSE_FIELDS = ['billed_resource_id', 'shipped_resource_id', 'assigned_resource_id', 'start', 'unit', 'rate', 'gst', 'qst', 'description'];
+    // The form has the fields of the list, in its order; billed to and assigned to are kept on an update, and a new
+    // expense takes them from the latest expense of its client (e.g. SPL is billed to Vigiteck)
+    const EXPENSE_FIELDS = ['start', 'shipped_resource_id', 'unit', 'rate', 'gst', 'qst', 'description'];
+    const INHERITED_FIELDS = ['billed_resource_id', 'assigned_resource_id'];
 
     async function renderExpenseForm(res, expense, errors = []) {
         const customers = await listCustomers();
@@ -531,7 +527,7 @@ function createSecureRouter({ db, logger, production }) {
     }
 
     router.get('/expenses/new', asyncHandler(async (req, res) => {
-        const last = await db.get('SELECT shipped_resource_id, billed_resource_id, assigned_resource_id FROM expense ORDER BY id DESC LIMIT 1') || {};
+        const last = await db.get('SELECT shipped_resource_id FROM expense ORDER BY id DESC LIMIT 1') || {};
 
         await renderExpenseForm(res, {
             ...last,
@@ -548,9 +544,12 @@ function createSecureRouter({ db, logger, production }) {
 
         if (errors.length) return renderExpenseForm(res, expense, errors);
 
+        const inherited = await db.get(`SELECT ${INHERITED_FIELDS.join(', ')} FROM expense WHERE shipped_resource_id = ? ORDER BY start DESC, id DESC LIMIT 1`, [expense.shipped_resource_id]) || {};
+        const fields = [...EXPENSE_FIELDS, ...INHERITED_FIELDS];
+
         await db.run(
-            `INSERT INTO expense (${EXPENSE_FIELDS.join(', ')}) VALUES (${EXPENSE_FIELDS.map(() => '?').join(', ')})`,
-            EXPENSE_FIELDS.map(field => expense[field])
+            `INSERT INTO expense (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
+            fields.map(field => expense[field] ?? inherited[field] ?? null)
         );
         res.redirect('/secure/expenses');
     }));
@@ -719,17 +718,15 @@ function createSecureRouter({ db, logger, production }) {
 
     // Payments received from a resource; date is stored as "YYYY-MM-DD"
     async function findPayments(query, own) {
-        // Default to the current year only when neither date is given
-        const defaults = query.from === undefined && query.to === undefined ? currentYear() : { from: '', to: '' };
-        const filters = { customer: query.customer || '', payer: query.payer || '', from: query.from ?? defaults.from, to: query.to ?? defaults.to };
+        const months = await listMonths('payment', 'date', own, ['resource_id', 'payer_id']);
+        const filters = { customer: query.customer || '', payer: query.payer || '', month: pickMonth(query, months) };
         const conditions = [];
         const params = [];
 
         if (own) { conditions.push('(p.resource_id = ? OR p.payer_id = ?)'); params.push(own, own); }
         if (filters.customer) { conditions.push('p.resource_id = ?'); params.push(filters.customer); }
         if (filters.payer) { conditions.push('p.payer_id = ?'); params.push(filters.payer); }
-        if (isDate(filters.from)) { conditions.push('p.date >= ?'); params.push(filters.from); }
-        if (isDate(filters.to)) { conditions.push('p.date <= ?'); params.push(filters.to); }
+        if (filters.month) { conditions.push('substr(p.date, 1, 7) = ?'); params.push(filters.month); }
 
         const rows = await db.all(
             `SELECT p.*, ${resourceName('r')} AS customer_name, ${resourceName('y')} AS payer_name
@@ -741,15 +738,15 @@ function createSecureRouter({ db, logger, production }) {
             params
         );
 
-        return { filters, rows };
+        return { filters, months, rows };
     }
 
     router.get('/payments', asyncHandler(async (req, res) => {
-        const { filters, rows } = await findPayments(req.query, ownId(req));
+        const { filters, months, rows } = await findPayments(req.query, ownId(req));
         const total = round(rows.reduce((sum, row) => sum + (row.amount || 0), 0));
 
         res.render('secure/payments', {
-            filters, rows, total,
+            filters, months, rows, total,
             customers: await listUsedResources('payment', 'resource_id', ownId(req), ['resource_id', 'payer_id']),
             payers: await listUsedResources('payment', 'payer_id', ownId(req), ['resource_id', 'payer_id']),
             query: new URLSearchParams(filters).toString()
@@ -900,9 +897,6 @@ function createSecureRouter({ db, logger, production }) {
 
     // Payments are matched on all bills, so filtering does not change which payment goes to which bill
     async function findTotals(query, own) {
-        // Default to the current year only when neither date is given
-        const defaults = query.from === undefined && query.to === undefined ? currentYear() : { from: '', to: '' };
-        const filters = { customer: query.customer || '', payer: query.payer || '', from: query.from ?? defaults.from, to: query.to ?? defaults.to };
         const every = await loadBills();
         const names = new Map((await db.all(`SELECT r.id, ${resourceName('r')} AS name FROM resource r`)).map(r => [r.id, r.name]));
 
@@ -912,11 +906,13 @@ function createSecureRouter({ db, logger, production }) {
 
         for (const bill of all) bill.payer_name = bill.payers.map(id => names.get(id)).join(', ');
 
+        // The months of the bills
+        const months = [...new Set(all.map(bill => bill.month))].sort();
+        const filters = { customer: query.customer || '', payer: query.payer || '', month: pickMonth(query, months) };
         const bills = all.filter(bill =>
             (!filters.customer || String(bill.customer_id) === filters.customer) &&
             (!filters.payer || bill.payers.some(id => String(id) === filters.payer)) &&
-            (!isDate(filters.from) || bill.month >= filters.from.slice(0, 7)) &&
-            (!isDate(filters.to) || bill.month <= filters.to.slice(0, 7)));
+            (!filters.month || bill.month === filters.month));
 
         // The filter only lists clients that have bills
         const byName = (a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
@@ -925,15 +921,15 @@ function createSecureRouter({ db, logger, production }) {
         // The payer filter only lists those who paid a bill
         const payers = [...new Set(all.flatMap(bill => bill.payers))].map(id => ({ id, name: names.get(id) })).sort(byName);
 
-        return { filters, bills, customers, payers };
+        return { filters, months, bills, customers, payers };
     }
 
     router.get('/totals', asyncHandler(async (req, res) => {
-        const { filters, bills, customers, payers } = await findTotals(req.query, ownId(req));
+        const { filters, months, bills, customers, payers } = await findTotals(req.query, ownId(req));
         const sum = field => round(bills.reduce((total, bill) => total + bill[field], 0));
 
         res.render('secure/totals', {
-            filters, bills, customers, payers, total: sum('total'), paid: sum('paid'), query: new URLSearchParams(filters).toString()
+            filters, months, bills, customers, payers, total: sum('total'), paid: sum('paid'), query: new URLSearchParams(filters).toString()
         });
     }));
 
