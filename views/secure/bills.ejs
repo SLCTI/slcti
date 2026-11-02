@@ -87,7 +87,8 @@
                                         <td class="num"><%= money(line.gst) %></td>
                                         <td class="num"><%= money(line.qst) %></td>
                                         <td class="num"><%= money(line.total) %></td>
-                                        <td colspan="2"></td>
+                                        <%# The hours are those of the provider's contact (its first user), e.g. "Heures de Simon" %>
+                                        <td class="description" colspan="2"><%= [t('Hours of'), provider.first_name].filter(Boolean).join(' ') %></td>
                                     </tr>
                                 <% }); %>
                                 <% bill.expenseLines.forEach(line => { %>

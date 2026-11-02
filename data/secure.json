@@ -126,5 +126,6 @@
     "Amount is required.": "Le montant est obligatoire.",
     "Type": "Type",
     "Expense": "Dépense",
-    "Time spent": "Temps"
+    "Time spent": "Temps",
+    "Hours of": "Heures de"
 }
