@@ -3,6 +3,14 @@
                 <h1><%= user.id ? t('Edit user') : t('New user') %></h1>
                 <% errors.forEach(error => { %><p class="error"><%= t(error) %></p><% }); %>
                 <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <label><%= t('Organisation') %>
+                    <select name="resource_id">
+                        <option value=""></option>
+                        <% organisations.forEach(organisation => { %>
+                            <option value="<%= organisation.id %>" <%= organisation.id === user.resource_id ? 'selected' : '' %>><%= organisation.name %></option>
+                        <% }); %>
+                    </select>
+                </label>
                 <label><%= t('First name') %>
                     <input name="first_name" value="<%= user.first_name %>">
                 </label>
@@ -16,14 +24,14 @@
                 <label><%= t('Email') %>
                     <input type="email" name="email" value="<%= user.email %>" autocomplete="off">
                 </label>
-                <label><%= t('Telephone') %>
-                    <input type="tel" name="telephone" value="<%= user.telephone %>">
-                </label>
                 <label><%= user.has_password ? t('New password') : t('Password') %>
                     <input type="password" name="password" minlength="12" autocomplete="new-password">
                 </label>
                 <label><%= t('Confirm password') %>
                     <input type="password" name="password_confirm" minlength="12" autocomplete="new-password">
+                </label>
+                <label><%= t('Telephone') %>
+                    <input type="tel" name="telephone" value="<%= user.telephone %>">
                 </label>
                 <label><%= t('Role') %>
                     <select name="role">
@@ -31,14 +39,6 @@
                         <option value="accountant" <%= user.role === 'accountant' ? 'selected' : '' %>><%= t('Accountant (read-only)') %></option>
                         <option value="client" <%= user.role === 'client' ? 'selected' : '' %>><%= t('Client (own data)') %></option>
                         <option value="admin" <%= user.role === 'admin' ? 'selected' : '' %>><%= t('Administrator') %></option>
-                    </select>
-                </label>
-                <label><%= t('Organisation') %>
-                    <select name="resource_id">
-                        <option value=""></option>
-                        <% organisations.forEach(organisation => { %>
-                            <option value="<%= organisation.id %>" <%= organisation.id === user.resource_id ? 'selected' : '' %>><%= organisation.name %></option>
-                        <% }); %>
                     </select>
                 </label>
                 <div class="form-actions">
