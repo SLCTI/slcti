@@ -327,6 +327,11 @@ button.delete:hover {
         border: 1px solid #ddd;
     }
 
+    .bill-parties a {
+        color: inherit;
+        text-decoration: none;
+    }
+
     .table-wrap {
         overflow: visible;
     }

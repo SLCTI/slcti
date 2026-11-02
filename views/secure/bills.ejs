@@ -16,6 +16,21 @@
         ['Email', resource.email],
         ['Website', resource.website]
     ];
+    // Address, telephone, email and website open Google Maps, the phone, the mail program or the site; any other value is text
+    const escape = value => String(value).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+    const website = value => /^https?:\/\//i.test(value) ? value : /^[a-z][a-z0-9+.-]*:/i.test(value) ? null : `https://${value}`;
+    const href = (name, value) => !value ? null
+        : name === 'Address' ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.replace(/\s+/g, ' ').trim())}`
+        : name === 'Telephone' ? `tel:${value.split(/#|x|ext|poste|,|;/i)[0].replace(/[^\d+]/g, '')}` // Without the extension
+        : name === 'Email' ? `mailto:${value.trim()}`
+        : name === 'Website' ? website(value.trim())
+        : null;
+    const field = (name, value) => {
+        const link = href(name, value);
+        const external = link && /^https:/.test(link) ? ' target="_blank" rel="noopener noreferrer"' : '';
+
+        return link ? `<a href="${escape(link)}"${external}>${escape(value)}</a>` : escape(value == null ? '' : value);
+    };
 %>
             <form method="get" action="/secure/bills" class="bill-picker" data-auto-submit>
                 <h1><%= t('Bills') %></h1>
@@ -34,20 +49,20 @@
                         <section>
                             <h2><%= t('Service provider') %></h2>
                             <dl>
-                                <% party(provider).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
+                                <% party(provider).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, value) %></dd><% }); %>
                             </dl>
                         </section>
                         <section>
                             <h2><%= t('Billed to') %></h2>
                             <dl>
-                                <% party(billedTo).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
+                                <% party(billedTo).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, value) %></dd><% }); %>
                             </dl>
                         </section>
                         <% if (isAdmin) { %>
                         <section>
                             <h2><%= t('Client') %></h2>
                             <dl>
-                                <% party(customer).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%= value %></dd><% }); %>
+                                <% party(customer).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, value) %></dd><% }); %>
                             </dl>
                         </section>
                         <% } %>
