@@ -42,7 +42,7 @@
                                 <button type="submit" title="<%= session.username %>"><%= t('Log out') %></button>
                             </form>
                         <% } else { %>
-                            <a href="/secure/login"><%= data.signIn[lang] %></a>
+                            <a href="/secure/login" rel="nofollow"><%= data.signIn[lang] %></a>
                         <% } %>
                         <% if (lang === 'fr-CA') { %>
                             <a href="?lang=en-CA"><img src="/assets/icons/en_ca.webp" class="icon icon-flag" alt="Switch to English language">English</a>

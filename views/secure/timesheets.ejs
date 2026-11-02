@@ -10,7 +10,7 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr><th class="num"><%= t('Week') %></th><th><%= t('Date') %></th><th><%= t('Day') %></th><th><%= t('Client') %></th><th><%= t('Type') %></th><th><%= t('Time') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
+                        <tr><th class="num"><%= t('Week') %></th><th><%= t('Date') %></th><th><%= t('Day') %></th><th><%= t('Client') %></th><th><%= t('Type') %></th><th><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
                         <tr class="filter-row">
                             <td></td>
                             <td>
@@ -42,7 +42,7 @@
                             <tr><td colspan="<%= isAdmin ? 13 : 12 %>" class="empty"><%= t('No entries for this period.') %></td></tr>
                         <% } %>
                         <% rows.forEach(row => { %>
-                            <%# Hours show their times and number of hours, expenses their units %>
+                            <%# The Units column shows the times and number of hours of the time entries, and the units of the expenses %>
                             <% const hours = row.type === 'hours'; const path = `/secure/${hours ? 'timesheets' : 'expenses'}/${row.id}`; %>
                             <tr>
                                 <% const date = (row.start || '').slice(0, 10); %>
@@ -54,7 +54,7 @@
                                 <% if (hours) { %>
                                 <td class="nowrap"><%= (row.start || '').slice(11, 16) %> – <%= (row.end || '').slice(11, 16) %><% if (row.hours != null) { %> (<%= row.hours.toFixed(2) %>)<% } %></td>
                                 <% } else { %>
-                                <td class="nowrap"><%= row.unit %> × </td>
+                                <td class="nowrap"><%= row.unit %></td>
                                 <% } %>
                                 <td class="num"><%= money(row.rate) %></td>
                                 <td class="num"><%= money(row.subtotal) %></td>
