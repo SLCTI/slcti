@@ -254,6 +254,13 @@ button.delete:hover {
     background: #a93226;
 }
 
+button.delete:disabled,
+button.delete:disabled:hover {
+    background: #c0392b;
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
 /* Bill */
 .bill-picker {
     margin-bottom: 16px;

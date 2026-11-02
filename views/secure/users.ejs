@@ -1,0 +1,51 @@
+<%- include('header', { title: t('Users') }) %>
+<% const roles = { admin: 'Administrator', accountant: 'Accountant', client: 'Client' }; %>
+            <div class="toolbar">
+                <h1><%= t('Users') %></h1>
+            </div>
+
+            <% if (error) { %><p class="error"><%= t(error) %></p><% } %>
+
+            <div class="table-wrap">
+                <table class="sortable" data-sort-title="<%= t('Sort') %>">
+                    <thead>
+                        <tr><th><%= t('Organisation') %></th><th><%= t('Name') %></th><th><%= t('Title') %></th><th><%= t('Email') %></th><th><%= t('Phone') %></th><th><%= t('Role') %></th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        <% if (users.length === 0) { %>
+                            <tr><td colspan="7" class="empty"><%= t('No users yet.') %></td></tr>
+                        <% } %>
+                        <% users.forEach(user => { %>
+                            <tr>
+                                <td class="nowrap"><%= user.organisation %></td>
+                                <td><%= [user.first_name, user.last_name].filter(Boolean).join(' ') %></td>
+                                <td><%= user.title %></td>
+                                <td><% if (user.email) { %><a href="mailto:<%= user.email %>"><%= user.email %></a><% } %></td>
+                                <td class="nowrap"><% if (user.telephone) { %><a href="tel:<%= user.telephone.split(/#|x|ext|poste|,|;/i)[0].replace(/[^\d+]/g, '') %>"><%= user.telephone %></a><% } %></td>
+                                <td><% if (user.role) { %><%= t(roles[user.role]) %><% } %></td>
+                                <td class="actions">
+                                    <a href="/secure/users/<%= user.id %>/edit" class="button small" title="<%= t('Edit') %>" aria-label="<%= t('Edit') %>"><%- include('icon', { name: 'edit' }) %></a>
+                                    <% if (user.id !== session.user_id) { %>
+                                    <form method="post" action="/secure/users/<%= user.id %>/delete" class="inline" data-confirm="<%= t('Delete this user?') %>">
+                                        <input type="hidden" name="_csrf" value="<%= csrf %>">
+                                        <button type="submit" class="small delete" title="<%= t('Delete') %>" aria-label="<%= t('Delete') %>"><%- include('icon', { name: 'delete' }) %></button>
+                                    </form>
+                                    <% } else { %>
+                                    <%# Shown but disabled: nobody can delete their own user %>
+                                    <span class="inline"><button type="button" class="small delete" disabled title="<%= t('You cannot delete your own user.') %>" aria-label="<%= t('You cannot delete your own user.') %>"><%- include('icon', { name: 'delete' }) %></button></span>
+                                    <% } %>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td colspan="6"><%= users.length %> <%= users.length === 1 ? t('user') : t('users') %></td>
+                            <td class="actions">
+                                <a href="/secure/users/new" class="button small" title="<%= t('New user') %>" aria-label="<%= t('New user') %>"><%- include('icon', { name: 'add' }) %></a>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+<%- include('footer') %>

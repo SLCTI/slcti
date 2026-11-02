@@ -109,7 +109,7 @@ cat /etc/ssl/certs/slcti.csr
 ```
 
 ### Secure section
-Resources, timesheets, expenses, bills, payments and totals are available at `/secure`. Everything is stored in a single SQLite database, `private/slcti.db`, which is ignored by Git and created on first start. Set `SLCTI_DATABASE` in `.env` to store it elsewhere. The table definitions are in `src/secure_db.js`.
+Organisations, users, timesheets, expenses, bills, payments and totals are available at `/secure`. Everything is stored in a single SQLite database, `private/slcti.db`, which is ignored by Git and created on first start. Set `SLCTI_DATABASE` in `.env` to store it elsewhere. The table definitions are in `src/secure_db.js`.
 
 The database is encrypted with SQLCipher. Its key is `SLCTI_DATABASE_KEY` in `.env` (see `.env.example`), which is never committed: keep a copy of it in a password manager, since the data cannot be read without it. SQLite tools without SQLCipher support (such as `sqlite3` or the SQLTools extension) cannot open the file.
 
@@ -130,14 +130,14 @@ The code goes through Git; `.env.production` and the database are copied with `s
 At the end, production holds the reference data: a copy of the production database is kept in `private/backups/slcti-production-<time>.db` and replaces the local data (the local data is backed up first to `private/backups/slcti-local-<time>.db`), so local work is always on current data. This works while the local server runs. Both `.env` files must therefore use the same `SLCTI_DATABASE_KEY`. To restore any backup into the local database the same way: `node src/restore_db.js FILE`.
 
 #### Logins and passwords
-Administrators manage the site access on the Resources page: a resource with a role (administrator or accountant) and a password signs in with its email, and choosing *No access* removes its password. Administrators have full access. Accountants have read-only access to timesheets (without descriptions), expenses, bills (without the client box), payments and totals, but not to resources. An administrator cannot remove their own administrator access nor delete their own resource, so there is always one left.
+Administrators manage the people of the organisations on the Users page: name, title, email and telephone. An organisation can have several users, and its first user is its contact on the bills. A user with a role (administrator, accountant or client) and a password signs in with its email; choosing *No access* removes its password and leaves a contact only. Administrators have full access. Accountants have read-only access to timesheets (without descriptions), expenses, bills (without the client box), payments and totals, but not to organisations nor users. Clients have the same read-only access as accountants, limited to the data of their organisation (which they must have): the timesheets and expenses where it is the client or the billed resource, and the bills, payments and totals where it is the client, the billed resource or the payer. An administrator cannot remove their own administrator access nor delete their own user, so there is always one left; an organisation with users cannot be deleted.
 
 To give a site access or reset a password without the site (for example, when nobody can sign in), on the web server:
 ```bash
 cd ~/source/resume
-node src/set_password.js EMAIL [admin|accountant]
+node src/set_password.js EMAIL [admin|accountant|client] [ORGANISATION_CODE]
 ```
-It uses the resource with this email, or creates one.
+It updates the user with this email, or creates one; a client needs the code of its organisation (for example `Paramed`).
 
 #### Back up the database
 Writes an encrypted copy (same key) to `private/backups/slcti-YYYY-MM-DD.db`:

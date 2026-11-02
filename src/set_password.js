@@ -1,7 +1,7 @@
-// Usage: node src/set_password.js <email> [admin|accountant]
-// Gives a site access to the resource with this email (a new resource when there is none), or changes its password
-// (and its role, when given), and signs out its sessions. A new access is an accountant (read-only) unless admin is given.
-// The Resources page does the same; this is for when nobody can sign in.
+// Usage: node src/set_password.js <email> [admin|accountant|client] [organisation code]
+// Creates the user with this email, or changes its password (and its role and organisation, when given), and signs out
+// its sessions. A new user is an accountant (read-only) unless another role is given; a client needs an organisation.
+// The Users page does the same; this is for when nobody can sign in.
 
 const readline = require('readline');
 const { databasePath, openDatabase, hashPassword, ROLES, PASSWORD_MIN_LENGTH } = require('./secure_db');
@@ -25,9 +25,10 @@ async function askHidden(question) {
 async function main() {
     const email = (process.argv[2] || '').trim();
     const role = process.argv[3] || null;
+    const code = process.argv[4] || null;
 
     if (!email || (role && !ROLES.includes(role))) {
-        console.error('Usage: node src/set_password.js <email> [admin|accountant]');
+        console.error('Usage: node src/set_password.js <email> [admin|accountant|client] [organisation code]');
         process.exit(1);
     }
 
@@ -46,22 +47,36 @@ async function main() {
     rl.close();
 
     const db = await openDatabase(databasePath());
+    const organisation = code && await db.get('SELECT id FROM resource WHERE code = ?', [code]);
 
-    // The resource that already signs in with this email, else the first one with it, else a new one
-    const resource = await db.get('SELECT id, code FROM resource WHERE lower(email) = lower(?) ORDER BY role IS NULL, id', [email])
-        || { id: (await db.run('INSERT INTO resource (code, email) VALUES (?, ?)', [email.split('@')[0], email])).lastInsertRowid, code: email.split('@')[0] };
+    if (code && !organisation) {
+        console.error(`No organisation has the code "${code}".`);
+        process.exit(1);
+    }
 
-    await db.run(
-        "UPDATE resource SET password_hash = ?, role = COALESCE(?, role, 'accountant') WHERE id = ?",
-        [await hashPassword(password), role, resource.id]
-    );
-    await db.run('DELETE FROM sessions WHERE resource_id = ?', [resource.id]);
+    const hash = await hashPassword(password);
+    // The user that signs in with this email, else a contact with it
+    const existing = await db.get('SELECT id, role, resource_id FROM user WHERE lower(email) = lower(?) ORDER BY role IS NULL, id', [email]);
+    const user = {
+        role: role || (existing ? existing.role : 'accountant'),
+        resource_id: organisation ? organisation.id : existing ? existing.resource_id : null
+    };
 
-    const { role: saved } = await db.get('SELECT role FROM resource WHERE id = ?', [resource.id]);
+    if (user.role === 'client' && !user.resource_id) {
+        console.error('A client needs an organisation: add its code after the role.');
+        process.exit(1);
+    }
+
+    if (existing) {
+        await db.run('UPDATE user SET password_hash = ?, role = ?, resource_id = ? WHERE id = ?', [hash, user.role, user.resource_id, existing.id]);
+        await db.run('DELETE FROM sessions WHERE user_id = ?', [existing.id]);
+    } else {
+        await db.run('INSERT INTO user (email, role, resource_id, password_hash) VALUES (?, ?, ?, ?)', [email, user.role, user.resource_id, hash]);
+    }
 
     await db.close();
 
-    console.log(`Password set for "${email}" (resource ${resource.code}, ${saved}).`);
+    console.log(`Password set for "${email}" (${user.role}${code ? `, ${code}` : ''}).`);
 }
 
 main();

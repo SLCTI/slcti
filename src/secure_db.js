@@ -11,13 +11,29 @@ const ENV_FILE = path.resolve(__dirname, '..', '.env');
 
 if (fs.existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
-// Each session belongs to the resource that signed in
+// Each session belongs to the user that signed in
 const SESSIONS = `
     CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY,
-        resource_id INTEGER NOT NULL REFERENCES resource (id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES user (id) ON DELETE CASCADE,
         csrf_token TEXT NOT NULL,
         expires_at INTEGER NOT NULL
+    );
+`;
+
+const USER = `
+    -- The people of the organisations; a user with a role and a password signs in with its email, and a client only
+    -- sees the data of its organisation. The first user of an organisation is its contact on the bills
+    CREATE TABLE IF NOT EXISTS user (
+        id INTEGER PRIMARY KEY,
+        resource_id INTEGER REFERENCES resource (id) ON DELETE CASCADE,
+        first_name VARCHAR,
+        last_name VARCHAR,
+        title VARCHAR,
+        email VARCHAR,
+        telephone VARCHAR,
+        role VARCHAR,
+        password_hash VARCHAR
     );
 `;
 
@@ -27,25 +43,20 @@ const SCHEMA = `
 
     ${SESSIONS}
 
-    -- A resource with a role (admin or accountant) and a password signs in with its email
+    -- The organisations: clients, payers and the provider itself
     CREATE TABLE IF NOT EXISTS resource (
         id INTEGER PRIMARY KEY,
         code VARCHAR,
-        last_name VARCHAR,
-        first_name VARCHAR,
-        title VARCHAR,
         organisation VARCHAR,
         neq VARCHAR,
         gst_number VARCHAR,
         qst_number VARCHAR,
         bank_account VARCHAR,
-        email VARCHAR,
         website VARCHAR,
-        telephone VARCHAR,
-        address VARCHAR,
-        role VARCHAR,
-        password_hash VARCHAR
+        address VARCHAR
     );
+
+    ${USER}
 
     -- Start and end are stored as "YYYY-MM-DD HH:MM"
     CREATE TABLE IF NOT EXISTS timesheet (
@@ -127,24 +138,90 @@ async function openDatabase(file, key = databaseKey()) {
 
     const columns = async table => (await wrapper.all(`PRAGMA table_info(${table})`)).map(column => column.name);
 
-    if (!(await columns('resource')).includes('role')) {
-        await wrapper.exec('ALTER TABLE resource ADD COLUMN role VARCHAR; ALTER TABLE resource ADD COLUMN password_hash VARCHAR;');
-    }
-
-    // Sessions belonged to users before; dropping them signs everyone out once
-    if (!(await columns('sessions')).includes('resource_id')) {
+    // Sessions belonged to resources before; dropping them signs everyone out once
+    if (!(await columns('sessions')).includes('user_id')) {
         await wrapper.exec(`DROP TABLE sessions; ${SESSIONS}`);
     }
 
-    if ((await columns('users')).length) await moveUsers(wrapper, await columns('users'));
+    // Logins were first in a users table, then on the resources; both now go to the user table
+    if ((await columns('users')).length) {
+        if (!(await columns('resource')).includes('role')) {
+            await wrapper.exec('ALTER TABLE resource ADD COLUMN role VARCHAR; ALTER TABLE resource ADD COLUMN password_hash VARCHAR;');
+        }
 
-    // One login per email
-    await wrapper.exec('CREATE UNIQUE INDEX IF NOT EXISTS ix_resource_login ON resource (lower(email)) WHERE role IS NOT NULL');
+        await moveUsers(wrapper, await columns('users'));
+    }
+
+    // The first user table required a login: rebuild it to also hold contacts, before moving the logins into it
+    if (!(await columns('user')).includes('telephone')) {
+        await wrapper.exec(`DROP TABLE sessions; ALTER TABLE user RENAME TO user_old; ${USER}
+            INSERT INTO user (id, resource_id, first_name, last_name, email, role, password_hash)
+            SELECT id, resource_id, first_name, last_name, email, role, password_hash FROM user_old;
+            DROP TABLE user_old; ${SESSIONS}`);
+    }
+
+    if ((await columns('resource')).includes('role')) await moveLogins(wrapper);
+    if ((await columns('resource')).includes('telephone')) await moveContacts(wrapper);
+
+    // One login per email; contacts without a site access may share one
+    await wrapper.exec('CREATE UNIQUE INDEX IF NOT EXISTS ix_user_login ON user (lower(email)) WHERE role IS NOT NULL');
 
     return wrapper;
 }
 
-// Logins were in a users table before they moved to resources. Each one goes to the resource it was linked to, else the
+// The contact of each organisation (name, title, email and telephone) becomes one of its users: the user that already
+// signs in with that email, else a new user without a site access
+async function moveContacts(db) {
+    await db.exec('BEGIN');
+
+    try {
+        const contacts = await db.all(
+            `SELECT id, first_name, last_name, title, email, telephone FROM resource
+             WHERE COALESCE(first_name, last_name, title, email, telephone) IS NOT NULL ORDER BY id`
+        );
+
+        for (const contact of contacts) {
+            const user = contact.email && await db.get('SELECT id FROM user WHERE resource_id = ? AND lower(email) = lower(?)', [contact.id, contact.email]);
+
+            if (user) {
+                await db.run(
+                    `UPDATE user SET first_name = COALESCE(first_name, ?), last_name = COALESCE(last_name, ?), title = COALESCE(title, ?),
+                     telephone = COALESCE(telephone, ?) WHERE id = ?`,
+                    [contact.first_name, contact.last_name, contact.title, contact.telephone, user.id]
+                );
+            } else {
+                await db.run(
+                    'INSERT INTO user (resource_id, first_name, last_name, title, email, telephone) VALUES (?, ?, ?, ?, ?, ?)',
+                    [contact.id, contact.first_name, contact.last_name, contact.title, contact.email, contact.telephone]
+                );
+            }
+        }
+
+        await db.exec(`${['first_name', 'last_name', 'title', 'email', 'telephone'].map(column => `ALTER TABLE resource DROP COLUMN ${column};`).join(' ')} COMMIT`);
+    } catch (err) {
+        await db.exec('ROLLBACK');
+        throw err;
+    }
+}
+
+// Each resource with a role and a password becomes a user of that organisation, with its name and email
+async function moveLogins(db) {
+    await db.exec('BEGIN');
+
+    try {
+        await db.run(
+            `INSERT INTO user (resource_id, first_name, last_name, email, role, password_hash)
+             SELECT id, first_name, last_name, email, role, password_hash FROM resource
+             WHERE role IS NOT NULL AND password_hash IS NOT NULL AND email IS NOT NULL ORDER BY id`
+        );
+        await db.exec('DROP INDEX IF EXISTS ix_resource_login; ALTER TABLE resource DROP COLUMN role; ALTER TABLE resource DROP COLUMN password_hash; COMMIT');
+    } catch (err) {
+        await db.exec('ROLLBACK');
+        throw err;
+    }
+}
+
+// The first logins were in a users table. Each one goes to the resource it was linked to, else the
 // resource with its email, else the provider for an administrator, else a new resource with its email. Logins that reach
 // the same resource merge: the highest role, and the password of the login that is the resource email (else of the latest)
 async function moveUsers(db, columns) {
@@ -181,8 +258,9 @@ async function moveUsers(db, columns) {
     }
 }
 
-// Logins and passwords, shared by the Resources page and set_password.js
-const ROLES = ['admin', 'accountant'];
+// Logins and passwords, shared by the Users page and set_password.js
+// A client only sees the data of its organisation
+const ROLES = ['admin', 'accountant', 'client'];
 const PASSWORD_MIN_LENGTH = 12;
 
 // The resource of the business itself: the provider of the bills

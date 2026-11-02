@@ -1,42 +1,13 @@
-<%- include('header', { title: resource.id ? t('Edit resource') : t('New resource') }) %>
+<%- include('header', { title: resource.id ? t('Edit organisation') : t('New organisation') }) %>
             <form method="post" action="/secure/resources<%= resource.id ? '/' + resource.id : '' %>" class="card">
-                <h1><%= resource.id ? t('Edit resource') : t('New resource') %></h1>
+                <h1><%= resource.id ? t('Edit organisation') : t('New organisation') %></h1>
                 <% errors.forEach(error => { %><p class="error"><%= t(error) %></p><% }); %>
                 <input type="hidden" name="_csrf" value="<%= csrf %>">
                 <label><%= t('Code') %>
                     <input name="code" value="<%= resource.code %>" required>
                 </label>
-                <label><%= t('First name') %>
-                    <input name="first_name" value="<%= resource.first_name %>">
-                </label>
-                <label><%= t('Last name') %>
-                    <input name="last_name" value="<%= resource.last_name %>">
-                </label>
-                <label><%= t('Title') %>
-                    <input name="title" value="<%= resource.title %>">
-                </label>
                 <label><%= t('Organisation') %>
                     <input name="organisation" value="<%= resource.organisation %>">
-                </label>
-                <label><%= t('Email') %>
-                    <input type="email" name="email" value="<%= resource.email %>" autocomplete="off">
-                </label>
-                <%# The email is the login; never autofilled, or the browser would put the signed-in administrator's own login and password here %>
-                <label><%= resource.has_access ? t('New password') : t('Password') %>
-                    <input type="password" name="password" minlength="12" autocomplete="new-password">
-                </label>
-                <label><%= t('Confirm password') %>
-                    <input type="password" name="password_confirm" minlength="12" autocomplete="new-password">
-                </label>
-                <label><%= t('Role') %>
-                    <select name="role">
-                        <option value=""><%= t('No access') %></option>
-                        <option value="accountant" <%= resource.role === 'accountant' ? 'selected' : '' %>><%= t('Accountant (read-only)') %></option>
-                        <option value="admin" <%= resource.role === 'admin' ? 'selected' : '' %>><%= t('Administrator') %></option>
-                    </select>
-                </label>
-                <label><%= t('Telephone') %>
-                    <input type="tel" name="telephone" value="<%= resource.telephone %>">
                 </label>
                 <label><%= t('Website') %>
                     <input type="url" name="website" value="<%= resource.website %>">

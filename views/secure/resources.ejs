@@ -1,27 +1,24 @@
-<%- include('header', { title: t('Resources') }) %>
+<%- include('header', { title: t('Organisations') }) %>
             <div class="toolbar">
-                <h1><%= t('Resources') %></h1>
+                <h1><%= t('Organisations') %></h1>
             </div>
 
             <% if (error) { %><p class="error"><%= t(error) %></p><% } %>
 
             <% if (resources.length === 0) { %>
-                <p class="empty"><%= t('No resources yet.') %> <a href="/secure/resources/new" class="button small" title="<%= t('New resource') %>" aria-label="<%= t('New resource') %>"><%- include('icon', { name: 'add' }) %></a></p>
+                <p class="empty"><%= t('No organisations yet.') %> <a href="/secure/resources/new" class="button small" title="<%= t('New organisation') %>" aria-label="<%= t('New organisation') %>"><%- include('icon', { name: 'add' }) %></a></p>
             <% } else { %>
                 <div class="table-wrap">
                     <table class="sortable" data-sort-title="<%= t('Sort') %>">
                         <thead>
-                            <tr><th><%= t('Code') %></th><th><%= t('Contact') %></th><th><%= t('Organisation') %></th><th><%= t('Email') %></th><th><%= t('Access') %></th><th><%= t('Phone') %></th><th></th></tr>
+                            <tr><th><%= t('Code') %></th><th><%= t('Organisation') %></th><th><%= t('Website') %></th><th></th></tr>
                         </thead>
                         <tbody>
                             <% resources.forEach(resource => { %>
                                 <tr>
                                     <td class="nowrap"><%= resource.code %></td>
-                                    <td><%= [resource.first_name, resource.last_name].filter(Boolean).join(' ') %></td>
                                     <td><%= resource.organisation %></td>
-                                    <td><% if (resource.email) { %><a href="mailto:<%= resource.email %>"><%= resource.email %></a><% } %></td>
-                                    <td><% if (resource.role) { %><%= t(resource.role === 'admin' ? 'Administrator' : 'Accountant') %><% } %></td>
-                                    <td class="nowrap"><% if (resource.telephone) { %><a href="tel:<%= resource.telephone.replace(/[^\d+,]/g, '') %>"><%= resource.telephone %></a><% } %></td>
+                                    <td><% if (/^https?:\/\//i.test(resource.website || '')) { %><a href="<%= resource.website %>" target="_blank" rel="noopener noreferrer"><%= resource.website %></a><% } else { %><%= resource.website %><% } %></td>
                                     <td class="actions">
                                         <a href="/secure/resources/<%= resource.id %>/edit" class="button small" title="<%= t('Edit') %>" aria-label="<%= t('Edit') %>"><%- include('icon', { name: 'edit' }) %></a>
                                     </td>
@@ -30,9 +27,9 @@
                         </tbody>
                         <tfoot>
                             <tr class="total-row">
-                                <td colspan="6"><%= resources.length %> <%= resources.length === 1 ? t('resource') : t('resources') %></td>
+                                <td colspan="3"><%= resources.length %> <%= resources.length === 1 ? t('organisation') : t('organisations') %></td>
                                 <td class="actions">
-                                    <a href="/secure/resources/new" class="button small" title="<%= t('New resource') %>" aria-label="<%= t('New resource') %>"><%- include('icon', { name: 'add' }) %></a>
+                                    <a href="/secure/resources/new" class="button small" title="<%= t('New organisation') %>" aria-label="<%= t('New organisation') %>"><%- include('icon', { name: 'add' }) %></a>
                                 </td>
                             </tr>
                         </tfoot>

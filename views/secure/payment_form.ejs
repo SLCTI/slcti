@@ -3,7 +3,7 @@
                 <h1><%= payment.id ? t('Edit payment') : t('New payment') %></h1>
                 <% errors.forEach(error => { %><p class="error"><%= t(error) %></p><% }); %>
                 <% if (customers.length === 0) { %>
-                    <p class="error"><%- t('Add a <a href="/secure/resources/new">resource</a> first.') %></p>
+                    <p class="error"><%- t('Add an <a href="/secure/resources/new">organisation</a> first.') %></p>
                 <% } %>
                 <input type="hidden" name="_csrf" value="<%= csrf %>">
                 <label><%= t('Date') %>

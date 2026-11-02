@@ -27,7 +27,7 @@
                     <% if (locals.session) { %>
                         <!-- Secure section, shown once signed in -->
                         <div class="menu-secure">
-                            <% if (locals.isAdmin) { %><a href="/secure/resources"><%= t('Resources') %></a><% } %>
+                            <% if (locals.isAdmin) { %><a href="/secure/resources"><%= t('Organisations') %></a><a href="/secure/users"><%= t('Users') %></a><% } %>
                             <a href="/secure/timesheets"><%= t('Timesheets') %></a>
                             <a href="/secure/expenses"><%= t('Expenses') %></a>
                             <a href="/secure/bills"><%= t('Bills') %></a>

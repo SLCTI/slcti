@@ -85,10 +85,10 @@ function sessionLoader(db) {
 
         if (token) {
             const session = await db.get(
-                `SELECT s.token_hash, s.resource_id, s.csrf_token, r.email AS username, r.role
+                `SELECT s.token_hash, s.user_id, s.csrf_token, u.email AS username, u.role, u.resource_id
                  FROM sessions s
-                 JOIN resource r ON r.id = s.resource_id
-                 WHERE s.token_hash = ? AND s.expires_at > ? AND r.role IS NOT NULL`,
+                 JOIN user u ON u.id = s.user_id
+                 WHERE s.token_hash = ? AND s.expires_at > ? AND u.role IS NOT NULL`,
                 [sha256(token), Date.now()]
             );
 
@@ -168,8 +168,7 @@ function createSecureRouter({ db, logger, production }) {
             return res.status(429).render('secure/login', { error: 'Too many attempts. Please try again later.', username });
         }
 
-        // The email of a resource with a site access
-        const user = await db.get('SELECT id, password_hash FROM resource WHERE lower(email) = lower(?) AND role IS NOT NULL', [username]);
+        const user = await db.get('SELECT id, password_hash FROM user WHERE lower(email) = lower(?) AND role IS NOT NULL AND password_hash IS NOT NULL', [username]);
 
         // Always verify a hash so that unknown usernames take as long as known ones
         const valid = await verifyPassword(password, user ? user.password_hash : await dummyHash);
@@ -194,7 +193,7 @@ function createSecureRouter({ db, logger, production }) {
 
         await db.run('DELETE FROM sessions WHERE expires_at <= ?', [now]);
         await db.run(
-            'INSERT INTO sessions (token_hash, resource_id, csrf_token, expires_at) VALUES (?, ?, ?, ?)',
+            'INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at) VALUES (?, ?, ?, ?)',
             [sha256(token), user.id, randomToken(), now + SESSION_TTL]
         );
 
@@ -224,17 +223,23 @@ function createSecureRouter({ db, logger, production }) {
         next();
     });
 
-    // Administrators can do everything; accountants can only read these pages (no resources)
-    const ACCOUNTANT_PAGES = ['/', '/timesheets', '/timesheets.csv', '/expenses', '/expenses.csv', '/bills', '/payments', '/payments.csv', '/totals', '/totals.csv'];
+    // Administrators can do everything; accountants and clients can only read these pages (no organisations nor users)
+    const READ_ONLY_PAGES = ['/', '/timesheets', '/timesheets.csv', '/expenses', '/expenses.csv', '/bills', '/payments', '/payments.csv', '/totals', '/totals.csv'];
 
     router.use((req, res, next) => {
-        if (req.session.role === 'admin' || (req.method === 'GET' && ACCOUNTANT_PAGES.includes(req.path))) return next();
+        if (req.session.role === 'admin' || (req.method === 'GET' && READ_ONLY_PAGES.includes(req.path))) return next();
 
         logger.warn(`Denied ${req.method} /secure${req.path} to "${req.session.username}" (${req.session.role})`);
         res.status(403).send('Forbidden');
     });
 
     router.get('/', (req, res) => res.redirect('/secure/timesheets'));
+
+    // A client only sees the data of its organisation: the timesheets and expenses where it is the client or the billed
+    // resource, and the bills and payments where it is the client, the billed resource or the payer. Null for everyone
+    // else (all data); -1 (nothing) for a client user without an organisation, which the Users page does not allow
+    const ownId = req => req.session.role === 'client' ? req.session.resource_id || -1 : null;
+    const ownBill = own => bill => !own || bill.customer_id === own || bill.billed_id === own || bill.payers.includes(own);
 
     // Date helpers for the list views
     router.use((req, res, next) => {
@@ -248,7 +253,7 @@ function createSecureRouter({ db, logger, production }) {
     const resourceName = alias => `${alias}.code`;
 
     // Customer and date range filters shared by the timesheet and expense lists
-    function readFilters(query, alias) {
+    function readFilters(query, alias, own) {
         // Default to the current month only when neither date is given
         const defaults = query.from === undefined && query.to === undefined ? currentMonth() : { from: '', to: '' };
         const filters = {
@@ -259,6 +264,7 @@ function createSecureRouter({ db, logger, production }) {
         const conditions = [];
         const params = [];
 
+        if (own) { conditions.push(`(${alias}.shipped_resource_id = ? OR ${alias}.billed_resource_id = ?)`); params.push(own, own); }
         if (filters.customer) { conditions.push(`${alias}.shipped_resource_id = ?`); params.push(filters.customer); }
         if (isDate(filters.from)) { conditions.push(`date(${alias}.start) >= ?`); params.push(filters.from); }
         if (isDate(filters.to)) { conditions.push(`date(${alias}.start) <= ?`); params.push(filters.to); }
@@ -267,8 +273,8 @@ function createSecureRouter({ db, logger, production }) {
     }
 
     // Descriptions are only shown to administrators
-    async function findTimesheets(query, isAdmin) {
-        const { filters, where, params } = readFilters(query, 't');
+    async function findTimesheets(query, isAdmin, own) {
+        const { filters, where, params } = readFilters(query, 't', own);
         const rows = await db.all(
             `SELECT t.*, ${HOURS} AS hours,
                     ${resourceName('s')} AS customer_name,
@@ -288,17 +294,19 @@ function createSecureRouter({ db, logger, production }) {
 
     const listCustomers = () => db.all(`SELECT r.id, ${resourceName('r')} AS name FROM resource r ORDER BY name COLLATE NOCASE`);
 
-    // The list filters only show the resources found in a column of their table (e.g. clients that have timesheets)
-    const listUsedResources = (table, column) => db.all(
+    // The list filters only show the resources found in a column of their table (e.g. clients that have timesheets);
+    // for a client, only in its own rows: those where one of the own columns is the client
+    const listUsedResources = (table, column, own, ownColumns = ['shipped_resource_id', 'billed_resource_id']) => db.all(
         `SELECT r.id, ${resourceName('r')} AS name
          FROM resource r
-         WHERE EXISTS (SELECT 1 FROM ${table} x WHERE x.${column} = r.id)
-         ORDER BY name COLLATE NOCASE`
+         WHERE EXISTS (SELECT 1 FROM ${table} x WHERE x.${column} = r.id${own ? ` AND (${ownColumns.map(c => `x.${c} = ?`).join(' OR ')})` : ''})
+         ORDER BY name COLLATE NOCASE`,
+        own ? ownColumns.map(() => own) : []
     );
 
     router.get('/timesheets', asyncHandler(async (req, res) => {
-        const { filters, rows } = await findTimesheets(req.query, res.locals.isAdmin);
-        const customers = await listUsedResources('timesheet', 'shipped_resource_id');
+        const { filters, rows } = await findTimesheets(req.query, res.locals.isAdmin, ownId(req));
+        const customers = await listUsedResources('timesheet', 'shipped_resource_id', ownId(req));
         const totals = rows.reduce((acc, row) => {
             acc.hours += row.hours || 0;
             acc.amount += (row.hours || 0) * (row.rate || 0);
@@ -311,7 +319,7 @@ function createSecureRouter({ db, logger, production }) {
 
     router.get('/timesheets.csv', asyncHandler(async (req, res) => {
         const { isAdmin } = res.locals;
-        const { rows } = await findTimesheets(req.query, isAdmin);
+        const { rows } = await findTimesheets(req.query, isAdmin, ownId(req));
         const header = ['Start', 'End', 'Client', 'Billed to', 'Assigned to', 'Hours', 'Rate', 'Amount', ...(isAdmin ? ['Description'] : [])].map(res.locals.t);
         const lines = rows.map(row => [
             row.start,
@@ -436,8 +444,8 @@ function createSecureRouter({ db, logger, production }) {
     const GST = `CASE WHEN e.gst = 1 THEN ROUND(${SUBTOTAL} * ${GST_RATE} + 1e-9, 2) ELSE 0 END`;
     const QST = `CASE WHEN e.qst = 1 THEN ROUND(${SUBTOTAL} * ${QST_RATE} + 1e-9, 2) ELSE 0 END`;
 
-    async function findExpenses(query) {
-        const { filters, where, params } = readFilters(query, 'e');
+    async function findExpenses(query, own) {
+        const { filters, where, params } = readFilters(query, 'e', own);
         const rows = await db.all(
             `SELECT e.*, ${SUBTOTAL} AS subtotal, ${GST} AS gst_amount, ${QST} AS qst_amount,
                     ${SUBTOTAL} + ${GST} + ${QST} AS total,
@@ -457,8 +465,8 @@ function createSecureRouter({ db, logger, production }) {
     }
 
     router.get('/expenses', asyncHandler(async (req, res) => {
-        const { filters, rows } = await findExpenses(req.query);
-        const customers = await listCustomers();
+        const { filters, rows } = await findExpenses(req.query, ownId(req));
+        const customers = await listUsedResources('expense', 'shipped_resource_id', ownId(req));
         const totals = rows.reduce((acc, row) => {
             acc.subtotal += row.subtotal;
             acc.gst += row.gst_amount;
@@ -472,7 +480,7 @@ function createSecureRouter({ db, logger, production }) {
     }));
 
     router.get('/expenses.csv', asyncHandler(async (req, res) => {
-        const { rows } = await findExpenses(req.query);
+        const { rows } = await findExpenses(req.query, ownId(req));
         const header = ['Date', 'Client', 'Billed to', 'Assigned to', 'Units', 'Rate', 'Subtotal', 'GST', 'QST', 'Total', 'Description'].map(res.locals.t);
         const lines = rows.map(row => [
             row.start,
@@ -688,28 +696,36 @@ function createSecureRouter({ db, logger, production }) {
 
     router.get('/bills', asyncHandler(async (req, res) => {
         // Show one bill, picked by "YYYY-MM/customer id"; the latest one by default
-        const all = await loadBills();
+        // Payments are matched on all bills before keeping a client's own
+        const every = await loadBills();
 
-        await applyPayments(all);
+        await applyPayments(every);
 
+        const all = every.filter(ownBill(ownId(req)));
         const bill = all.find(b => `${b.month}/${b.customer_id}` === req.query.bill) || all[all.length - 1] || null;
-        const provider = await db.get('SELECT * FROM resource WHERE code = ?', [PROVIDER_CODE]) || {};
+        // An organisation with the name, title, email and telephone of its contact: its first user
+        const party = async (where, id) => await db.get(
+            `SELECT r.*, u.first_name, u.last_name, u.title, u.email, u.telephone
+             FROM resource r LEFT JOIN user u ON u.id = (SELECT MIN(id) FROM user WHERE resource_id = r.id)
+             WHERE r.${where} = ?`, [id]) || {};
+        const provider = await party('code', PROVIDER_CODE);
         // The client box is only shown to administrators
-        const customer = bill && res.locals.isAdmin && await db.get('SELECT * FROM resource WHERE id = ?', [bill.customer_id]) || {};
+        const customer = bill && res.locals.isAdmin ? await party('id', bill.customer_id) : {};
         // Billed to is whoever paid the bill; before it is paid, the billed resource of its entries, else the client
-        const billedTo = bill && await db.get('SELECT * FROM resource WHERE id = ?', [bill.payers[0] || bill.billed_id || bill.customer_id]) || {};
+        const billedTo = bill ? await party('id', bill.payers[0] || bill.billed_id || bill.customer_id) : {};
 
         res.render('secure/bills', { bill, options: all, provider, customer, billedTo });
     }));
 
     // Payments received from a resource; date is stored as "YYYY-MM-DD"
-    async function findPayments(query) {
+    async function findPayments(query, own) {
         // Default to the current year only when neither date is given
         const defaults = query.from === undefined && query.to === undefined ? currentYear() : { from: '', to: '' };
         const filters = { customer: query.customer || '', payer: query.payer || '', from: query.from ?? defaults.from, to: query.to ?? defaults.to };
         const conditions = [];
         const params = [];
 
+        if (own) { conditions.push('(p.resource_id = ? OR p.payer_id = ?)'); params.push(own, own); }
         if (filters.customer) { conditions.push('p.resource_id = ?'); params.push(filters.customer); }
         if (filters.payer) { conditions.push('p.payer_id = ?'); params.push(filters.payer); }
         if (isDate(filters.from)) { conditions.push('p.date >= ?'); params.push(filters.from); }
@@ -729,19 +745,19 @@ function createSecureRouter({ db, logger, production }) {
     }
 
     router.get('/payments', asyncHandler(async (req, res) => {
-        const { filters, rows } = await findPayments(req.query);
+        const { filters, rows } = await findPayments(req.query, ownId(req));
         const total = round(rows.reduce((sum, row) => sum + (row.amount || 0), 0));
 
         res.render('secure/payments', {
             filters, rows, total,
-            customers: await listUsedResources('payment', 'resource_id'),
-            payers: await listUsedResources('payment', 'payer_id'),
+            customers: await listUsedResources('payment', 'resource_id', ownId(req), ['resource_id', 'payer_id']),
+            payers: await listUsedResources('payment', 'payer_id', ownId(req), ['resource_id', 'payer_id']),
             query: new URLSearchParams(filters).toString()
         });
     }));
 
     router.get('/payments.csv', asyncHandler(async (req, res) => {
-        const { rows } = await findPayments(req.query);
+        const { rows } = await findPayments(req.query, ownId(req));
         const header = ['Date', 'Client', 'Payer', 'Amount'].map(res.locals.t);
         const lines = rows.map(row => [row.date, row.customer_name, row.payer_name, row.amount ?? ''].map(csvValue).join(','));
 
@@ -883,14 +899,16 @@ function createSecureRouter({ db, logger, production }) {
     }
 
     // Payments are matched on all bills, so filtering does not change which payment goes to which bill
-    async function findTotals(query) {
+    async function findTotals(query, own) {
         // Default to the current year only when neither date is given
         const defaults = query.from === undefined && query.to === undefined ? currentYear() : { from: '', to: '' };
         const filters = { customer: query.customer || '', payer: query.payer || '', from: query.from ?? defaults.from, to: query.to ?? defaults.to };
-        const all = await loadBills();
+        const every = await loadBills();
         const names = new Map((await db.all(`SELECT r.id, ${resourceName('r')} AS name FROM resource r`)).map(r => [r.id, r.name]));
 
-        await applyPayments(all);
+        await applyPayments(every);
+
+        const all = every.filter(ownBill(own));
 
         for (const bill of all) bill.payer_name = bill.payers.map(id => names.get(id)).join(', ');
 
@@ -911,7 +929,7 @@ function createSecureRouter({ db, logger, production }) {
     }
 
     router.get('/totals', asyncHandler(async (req, res) => {
-        const { filters, bills, customers, payers } = await findTotals(req.query);
+        const { filters, bills, customers, payers } = await findTotals(req.query, ownId(req));
         const sum = field => round(bills.reduce((total, bill) => total + bill[field], 0));
 
         res.render('secure/totals', {
@@ -920,7 +938,7 @@ function createSecureRouter({ db, logger, production }) {
     }));
 
     router.get('/totals.csv', asyncHandler(async (req, res) => {
-        const { bills } = await findTotals(req.query);
+        const { bills } = await findTotals(req.query, ownId(req));
         const header = ['Bill', 'Month', 'Client', 'Payer', 'Payment', 'Total', 'Difference'].map(res.locals.t);
         const lines = bills.map(bill => [
             String(bill.number).padStart(3, '0'),
@@ -944,20 +962,19 @@ function createSecureRouter({ db, logger, production }) {
     // Resources (the page was named Customers before)
     router.get('/customers', (req, res) => res.redirect(301, '/secure/resources'));
 
-    const RESOURCE_FIELDS = ['code', 'first_name', 'last_name', 'title', 'organisation', 'neq', 'gst_number', 'qst_number',
-        'bank_account', 'email', 'website', 'telephone', 'address'];
+    // The contact, email and telephone are on the users of the organisation
+    const RESOURCE_FIELDS = ['code', 'organisation', 'neq', 'gst_number', 'qst_number', 'bank_account', 'website', 'address'];
 
     const countUses = `
         (SELECT COUNT(*) FROM timesheet x WHERE r.id IN (x.billed_resource_id, x.shipped_resource_id, x.assigned_resource_id))
       + (SELECT COUNT(*) FROM expense x WHERE r.id IN (x.billed_resource_id, x.shipped_resource_id, x.assigned_resource_id))
       + (SELECT COUNT(*) FROM payment x WHERE r.id IN (x.resource_id, x.payer_id))`;
 
-    // Never the password hash: the pages only need to know whether a resource has a site access
-    const RESOURCE_COLUMNS = `r.id, ${RESOURCE_FIELDS.map(field => `r.${field}`).join(', ')}, r.role, ${resourceName('r')} AS name`;
+    const RESOURCE_COLUMNS = `r.id, ${RESOURCE_FIELDS.map(field => `r.${field}`).join(', ')}, ${resourceName('r')} AS name`;
 
     const RESOURCE_ERRORS = {
-        in_use: 'This resource is used by timesheets, expenses or payments and cannot be deleted.',
-        own: 'You cannot delete your own resource.'
+        in_use: 'This organisation is used by timesheets, expenses or payments and cannot be deleted.',
+        users: 'This organisation has users and cannot be deleted.'
     };
 
     router.get('/resources', asyncHandler(async (req, res) => {
@@ -966,38 +983,13 @@ function createSecureRouter({ db, logger, production }) {
         res.render('secure/resources', { resources, error: RESOURCE_ERRORS[req.query.error] || null });
     }));
 
-    // A resource and its site access: no role, or a role and a password, its email being the login
-    async function readResource(body, id, session) {
+    function readResource(body, id) {
         const resource = Object.fromEntries(RESOURCE_FIELDS.map(field => [field, text(body[field])]));
-        const role = ROLES.includes(body.role) ? body.role : null;
-        const password = String(body.password || '');
-        const current = id ? await db.get('SELECT role FROM resource WHERE id = ?', [id]) : null;
         const errors = [];
 
         if (!resource.code) errors.push('Code is required.');
-        if (resource.email && !/^[^\s@]+@[^\s@]+$/.test(resource.email)) errors.push('Email is invalid.');
-        if (id && Number(id) === session.resource_id && role !== 'admin') errors.push('You cannot remove your own administrator access.');
 
-        if (role) {
-            const taken = resource.email && await db.get('SELECT 1 FROM resource WHERE lower(email) = lower(?) AND role IS NOT NULL AND id != ?', [resource.email, id || 0]);
-
-            if (!resource.email) errors.push('A site access needs an email, which is its login.');
-            else if (taken) errors.push('Another resource with a site access already has this email.');
-            if (!(current && current.role) && !password) errors.push('A password is required for a new site access.');
-            if (password && password.length < PASSWORD_MIN_LENGTH) errors.push('Password must be at least 12 characters.');
-            if (password !== String(body.password_confirm || '')) errors.push('Passwords do not match.');
-        }
-
-        return { resource: { ...resource, id, role, has_access: Boolean(current && current.role) }, password, errors };
-    }
-
-    // No role removes the password and signs the resource out; a new password signs out its other sessions
-    async function saveAccess(id, role, password, session) {
-        const hash = role && password ? await hashPassword(password) : null;
-
-        await db.run('UPDATE resource SET role = ?, password_hash = CASE WHEN ? IS NULL THEN NULL ELSE COALESCE(?, password_hash) END WHERE id = ?', [role, role, hash, id]);
-
-        if (!role || hash) await db.run('DELETE FROM sessions WHERE resource_id = ? AND token_hash != ?', [id, session.token_hash]);
+        return { resource: { ...resource, id }, errors };
     }
 
     const renderResourceForm = (res, resource, errors = []) =>
@@ -1006,16 +998,14 @@ function createSecureRouter({ db, logger, production }) {
     router.get('/resources/new', (req, res) => renderResourceForm(res, {}));
 
     router.post('/resources', asyncHandler(async (req, res) => {
-        const { resource, password, errors } = await readResource(req.body, null, req.session);
+        const { resource, errors } = readResource(req.body, null);
 
         if (errors.length) return renderResourceForm(res, resource, errors);
 
-        const { lastInsertRowid } = await db.run(
+        await db.run(
             `INSERT INTO resource (${RESOURCE_FIELDS.join(', ')}) VALUES (${RESOURCE_FIELDS.map(() => '?').join(', ')})`,
             RESOURCE_FIELDS.map(field => resource[field])
         );
-
-        await saveAccess(lastInsertRowid, resource.role, password, req.session);
         res.redirect('/secure/resources');
     }));
 
@@ -1024,7 +1014,7 @@ function createSecureRouter({ db, logger, production }) {
 
         if (!resource) return next();
 
-        renderResourceForm(res, { ...resource, has_access: Boolean(resource.role) });
+        renderResourceForm(res, resource);
     }));
 
     router.post('/resources/:id', asyncHandler(async (req, res, next) => {
@@ -1032,7 +1022,7 @@ function createSecureRouter({ db, logger, production }) {
 
         if (!existing) return next();
 
-        const { resource, password, errors } = await readResource(req.body, existing.id, req.session);
+        const { resource, errors } = readResource(req.body, existing.id);
 
         if (errors.length) return renderResourceForm(res, resource, errors);
 
@@ -1040,19 +1030,128 @@ function createSecureRouter({ db, logger, production }) {
             `UPDATE resource SET ${RESOURCE_FIELDS.map(field => `${field} = ?`).join(', ')} WHERE id = ?`,
             [...RESOURCE_FIELDS.map(field => resource[field]), resource.id]
         );
-        await saveAccess(resource.id, resource.role, password, req.session);
         res.redirect('/secure/resources');
     }));
 
     router.post('/resources/:id/delete', asyncHandler(async (req, res) => {
         const used = await db.get(`SELECT ${countUses} AS count FROM resource r WHERE r.id = ?`, [req.params.id]);
 
-        if (Number(req.params.id) === req.session.resource_id) return res.redirect('/secure/resources?error=own');
         if (used && used.count > 0) return res.redirect('/secure/resources?error=in_use');
+        if (await db.get('SELECT 1 FROM user WHERE resource_id = ?', [req.params.id])) return res.redirect('/secure/resources?error=users');
 
-        // Its sessions go with it
         await db.run('DELETE FROM resource WHERE id = ?', [req.params.id]);
         res.redirect('/secure/resources');
+    }));
+
+    // Users: the people of the organisations. A user with a role and a password signs in with its email; without a
+    // role, it is only a contact. A client user belongs to an organisation and only sees its data
+    const USER_COLUMNS = `u.id, u.resource_id, u.first_name, u.last_name, u.title, u.email, u.telephone, u.role,
+        u.password_hash IS NOT NULL AS has_password, ${resourceName('r')} AS organisation`;
+
+    const USER_ERRORS = {
+        own: 'You cannot delete your own user.'
+    };
+
+    router.get('/users', asyncHandler(async (req, res) => {
+        const users = await db.all(
+            `SELECT ${USER_COLUMNS} FROM user u LEFT JOIN resource r ON r.id = u.resource_id
+             ORDER BY organisation COLLATE NOCASE, u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE, u.email COLLATE NOCASE`
+        );
+
+        res.render('secure/users', { users, error: USER_ERRORS[req.query.error] || null });
+    }));
+
+    // Never the password hash; a new site access needs a password, an existing one keeps it when none is typed
+    async function readUser(body, id, session) {
+        const current = id ? await db.get('SELECT password_hash IS NOT NULL AS has_password FROM user WHERE id = ?', [id]) : null;
+        const user = {
+            id,
+            first_name: text(body.first_name),
+            last_name: text(body.last_name),
+            title: text(body.title),
+            email: text(body.email),
+            telephone: text(body.telephone),
+            role: ROLES.includes(body.role) ? body.role : null,
+            resource_id: resourceId(body.resource_id),
+            has_password: Boolean(current && current.has_password)
+        };
+        const password = String(body.password || '');
+        const errors = [];
+
+        if (user.email && !/^[^\s@]+@[^\s@]+$/.test(user.email)) errors.push('Email is invalid.');
+        if (user.resource_id && !await db.get('SELECT 1 FROM resource WHERE id = ?', [user.resource_id])) errors.push('Organisation is invalid.');
+        if (id && Number(id) === session.user_id && user.role !== 'admin') errors.push('You cannot remove your own administrator access.');
+
+        if (user.role) {
+            if (!user.email) errors.push('A site access needs an email, which is its login.');
+            else if (await db.get('SELECT 1 FROM user WHERE lower(email) = lower(?) AND role IS NOT NULL AND id != ?', [user.email, id || 0])) errors.push('Another user already has this email.');
+            if (user.role === 'client' && !user.resource_id) errors.push('A client user needs an organisation.');
+            if (!user.has_password && !password) errors.push('A password is required for a new site access.');
+            if (password && password.length < PASSWORD_MIN_LENGTH) errors.push('Password must be at least 12 characters.');
+            if (password !== String(body.password_confirm || '')) errors.push('Passwords do not match.');
+        }
+
+        return { user, password, errors };
+    }
+
+    // No role removes the password and signs the user out; a new password signs out its other sessions
+    async function saveUser(user, password, session) {
+        const fields = ['resource_id', 'first_name', 'last_name', 'title', 'email', 'telephone', 'role'];
+        const id = user.id || (await db.run(
+            `INSERT INTO user (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`, fields.map(field => user[field]))).lastInsertRowid;
+
+        if (user.id) await db.run(`UPDATE user SET ${fields.map(field => `${field} = ?`).join(', ')} WHERE id = ?`, [...fields.map(field => user[field]), id]);
+
+        if (!user.role || password) {
+            await db.run('UPDATE user SET password_hash = ? WHERE id = ?', [user.role ? await hashPassword(password) : null, id]);
+            await db.run('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?', [id, session.token_hash]);
+        }
+    }
+
+    async function renderUserForm(res, user, errors = []) {
+        res.status(errors.length ? 400 : 200).render('secure/user_form', { user, organisations: await listCustomers(), errors });
+    }
+
+    router.get('/users/new', asyncHandler(async (req, res) => {
+        await renderUserForm(res, { resource_id: parseInt(req.query.organisation, 10) || null });
+    }));
+
+    router.post('/users', asyncHandler(async (req, res) => {
+        const { user, password, errors } = await readUser(req.body, null, req.session);
+
+        if (errors.length) return renderUserForm(res, user, errors);
+
+        await saveUser(user, password, req.session);
+        res.redirect('/secure/users');
+    }));
+
+    router.get('/users/:id/edit', asyncHandler(async (req, res, next) => {
+        const user = await db.get(`SELECT ${USER_COLUMNS} FROM user u LEFT JOIN resource r ON r.id = u.resource_id WHERE u.id = ?`, [req.params.id]);
+
+        if (!user) return next();
+
+        await renderUserForm(res, user);
+    }));
+
+    router.post('/users/:id', asyncHandler(async (req, res, next) => {
+        const existing = await db.get('SELECT id FROM user WHERE id = ?', [req.params.id]);
+
+        if (!existing) return next();
+
+        const { user, password, errors } = await readUser(req.body, existing.id, req.session);
+
+        if (errors.length) return renderUserForm(res, user, errors);
+
+        await saveUser(user, password, req.session);
+        res.redirect('/secure/users');
+    }));
+
+    // Its sessions go with it
+    router.post('/users/:id/delete', asyncHandler(async (req, res) => {
+        if (Number(req.params.id) === req.session.user_id) return res.redirect('/secure/users?error=own');
+
+        await db.run('DELETE FROM user WHERE id = ?', [req.params.id]);
+        res.redirect('/secure/users');
     }));
 
     return router;
