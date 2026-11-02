@@ -15,7 +15,7 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr><th class="num"><%= t('Bill') %></th><th><%= t('Month') %></th><th><%= t('Client') %></th><th class="num"><%= t('Payment') %></th><th class="num"><%= t('Total') %></th><th class="num"><%= t('Difference') %></th><th></th></tr>
+                        <tr><th class="num"><%= t('Bill') %></th><th><%= t('Month') %></th><th><%= t('Client') %></th><th><%= t('Payer') %></th><th class="num"><%= t('Payment') %></th><th class="num"><%= t('Total') %></th><th class="num"><%= t('Difference') %></th><th></th></tr>
                         <tr class="filter-row">
                             <td></td>
                             <td>
@@ -30,21 +30,30 @@
                                     <% }); %>
                                 </select>
                             </td>
+                            <td>
+                                <select name="payer" form="filters" aria-label="<%= t('Payer') %>">
+                                    <option value=""><%= t('All') %></option>
+                                    <% payers.forEach(payer => { %>
+                                        <option value="<%= payer.id %>" <%= String(payer.id) === String(filters.payer) ? 'selected' : '' %>><%= payer.name %></option>
+                                    <% }); %>
+                                </select>
+                            </td>
                             <td colspan="3"></td>
                             <td class="actions">
-                                <a href="/secure/totals?customer=&from=&to=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
+                                <a href="/secure/totals?customer=&payer=&from=&to=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
                             </td>
                         </tr>
                     </thead>
                     <tbody>
                         <% if (bills.length === 0) { %>
-                            <tr><td colspan="7" class="empty"><%= t('No bills yet.') %></td></tr>
+                            <tr><td colspan="8" class="empty"><%= t('No bills yet.') %></td></tr>
                         <% } %>
                         <% bills.forEach(bill => { %>
                             <tr>
                                 <td class="num"><%= String(bill.number).padStart(3, '0') %></td>
                                 <td class="nowrap"><%= bill.month %></td>
                                 <td><%= bill.customer_name %></td>
+                                <td><%= bill.payer_name %></td>
                                 <td class="num"><%= bill.paid ? money(bill.paid) : '' %></td>
                                 <td class="num"><%= money(bill.total) %></td>
                                 <% const diff = difference(bill.paid, bill.total); %>
@@ -55,7 +64,7 @@
                     </tbody>
                     <tfoot>
                         <tr class="total-row">
-                            <td colspan="3"><%= bills.length %> <%= bills.length === 1 ? t('bill') : t('bills') %></td>
+                            <td colspan="4"><%= bills.length %> <%= bills.length === 1 ? t('bill') : t('bills') %></td>
                             <td class="num"><%= money(paid) %></td>
                             <td class="num"><%= money(total) %></td>
                             <td class="num <%= sign(difference(paid, total)) %>"><%= money(difference(paid, total)) %></td>

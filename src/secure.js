@@ -886,39 +886,47 @@ function createSecureRouter({ db, logger, production }) {
     async function findTotals(query) {
         // Default to the current year only when neither date is given
         const defaults = query.from === undefined && query.to === undefined ? currentYear() : { from: '', to: '' };
-        const filters = { customer: query.customer || '', from: query.from ?? defaults.from, to: query.to ?? defaults.to };
+        const filters = { customer: query.customer || '', payer: query.payer || '', from: query.from ?? defaults.from, to: query.to ?? defaults.to };
         const all = await loadBills();
+        const names = new Map((await db.all(`SELECT r.id, ${resourceName('r')} AS name FROM resource r`)).map(r => [r.id, r.name]));
 
         await applyPayments(all);
 
+        for (const bill of all) bill.payer_name = bill.payers.map(id => names.get(id)).join(', ');
+
         const bills = all.filter(bill =>
             (!filters.customer || String(bill.customer_id) === filters.customer) &&
+            (!filters.payer || bill.payers.some(id => String(id) === filters.payer)) &&
             (!isDate(filters.from) || bill.month >= filters.from.slice(0, 7)) &&
             (!isDate(filters.to) || bill.month <= filters.to.slice(0, 7)));
 
         // The filter only lists clients that have bills
-        const customers = [...new Map(all.map(bill => [bill.customer_id, { id: bill.customer_id, name: bill.customer_name }])).values()]
-            .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
+        const byName = (a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+        const customers = [...new Map(all.map(bill => [bill.customer_id, { id: bill.customer_id, name: bill.customer_name }])).values()].sort(byName);
 
-        return { filters, bills, customers };
+        // The payer filter only lists those who paid a bill
+        const payers = [...new Set(all.flatMap(bill => bill.payers))].map(id => ({ id, name: names.get(id) })).sort(byName);
+
+        return { filters, bills, customers, payers };
     }
 
     router.get('/totals', asyncHandler(async (req, res) => {
-        const { filters, bills, customers } = await findTotals(req.query);
+        const { filters, bills, customers, payers } = await findTotals(req.query);
         const sum = field => round(bills.reduce((total, bill) => total + bill[field], 0));
 
         res.render('secure/totals', {
-            filters, bills, customers, total: sum('total'), paid: sum('paid'), query: new URLSearchParams(filters).toString()
+            filters, bills, customers, payers, total: sum('total'), paid: sum('paid'), query: new URLSearchParams(filters).toString()
         });
     }));
 
     router.get('/totals.csv', asyncHandler(async (req, res) => {
         const { bills } = await findTotals(req.query);
-        const header = ['Bill', 'Month', 'Client', 'Payment', 'Total', 'Difference'].map(res.locals.t);
+        const header = ['Bill', 'Month', 'Client', 'Payer', 'Payment', 'Total', 'Difference'].map(res.locals.t);
         const lines = bills.map(bill => [
             String(bill.number).padStart(3, '0'),
             bill.month,
             bill.customer_name,
+            bill.payer_name,
             bill.paid ? bill.paid.toFixed(2) : '',
             bill.total.toFixed(2),
             round(bill.paid - bill.total) ? round(bill.paid - bill.total).toFixed(2) : ''
