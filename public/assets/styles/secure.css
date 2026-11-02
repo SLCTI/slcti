@@ -41,6 +41,21 @@ label {
     gap: 4px;
 }
 
+/* Groups of form fields, laid out like the other fields of their card */
+.card fieldset {
+    border: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.card fieldset[hidden] {
+    display: none;
+}
+
 label.check {
     align-items: center;
     flex-direction: row;
@@ -273,25 +288,30 @@ button.delete:disabled:hover {
     margin-bottom: 16px;
 }
 
+/* The three boxes share their rows (a title and the 10 fields of bills.ejs), so that each field is on the same line in
+   all of them, even when a value takes two lines in one box */
 .bill-parties section {
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    display: grid;
+    font-size: 0.9rem;
+    gap: 2px 12px;
+    grid-row: span 11;
+    grid-template-columns: max-content 1fr;
+    grid-template-rows: subgrid;
     padding: 16px;
 }
 
 .bill-parties h2 {
     font-size: 1rem;
-    margin: 0 0 8px;
+    grid-column: 1 / -1;
+    margin: 0 0 6px;
     text-transform: uppercase;
 }
 
 .bill-parties dl {
-    display: grid;
-    font-size: 0.9rem;
-    gap: 2px 12px;
-    grid-template-columns: max-content 1fr;
-    margin: 0;
+    display: contents;
 }
 
 .bill-parties dt {

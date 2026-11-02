@@ -29,7 +29,8 @@
         const link = href(name, value);
         const external = link && /^https:/.test(link) ? ' target="_blank" rel="noopener noreferrer"' : '';
 
-        return link ? `<a href="${escape(link)}"${external}>${escape(value)}</a>` : escape(value == null ? '' : value);
+        // An empty field keeps its line, so that the three boxes stay aligned
+        return link ? `<a href="${escape(link)}"${external}>${escape(value)}</a>` : value == null || value === '' ? '&nbsp;' : escape(value);
     };
 %>
             <form method="get" action="/secure/bills" class="bill-picker" data-auto-submit>
@@ -55,14 +56,14 @@
                         <section>
                             <h2><%= t('Billed to') %></h2>
                             <dl>
-                                <% party(billedTo).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, value) %></dd><% }); %>
+                                <% party(billedTo).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, name === 'Bank Account' ? null : value) %></dd><% }); %>
                             </dl>
                         </section>
                         <% if (isAdmin) { %>
                         <section>
                             <h2><%= t('Client') %></h2>
                             <dl>
-                                <% party(customer).filter(([name]) => name !== 'Bank Account').forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, value) %></dd><% }); %>
+                                <% party(customer).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, name === 'Bank Account' ? null : value) %></dd><% }); %>
                             </dl>
                         </section>
                         <% } %>

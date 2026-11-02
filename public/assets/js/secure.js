@@ -17,6 +17,19 @@ document.addEventListener('change', event => {
     if (field.dataset && field.dataset.decimals && field.value !== '' && !isNaN(field.value)) field.value = Number(field.value).toFixed(Number(field.dataset.decimals));
 });
 
+// Entry form: show the fields of the chosen type (hours or expense); the others are disabled, so they are neither
+// checked nor sent
+document.addEventListener('change', event => {
+    if (!event.target.matches('[data-entry-type]')) return;
+
+    for (const fieldset of event.target.form.querySelectorAll('fieldset[data-type]')) {
+        const active = fieldset.dataset.type === event.target.value;
+
+        fieldset.disabled = !active;
+        fieldset.hidden = !active;
+    }
+});
+
 // Submit filter forms as soon as one of their fields changes
 document.addEventListener('change', event => {
     const form = event.target.form;

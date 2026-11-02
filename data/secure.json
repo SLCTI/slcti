@@ -1,7 +1,6 @@
 {
     "_comment": "French labels of the secure section, keyed by their English text; data from the database is never translated",
     "Timesheets": "Feuilles de temps",
-    "Expenses": "Dépenses",
     "Bills": "Factures",
     "Totals": "Totaux",
     "Log out": "Déconnexion",
@@ -46,14 +45,11 @@
     "bill": "facture",
     "bills": "factures",
     "No entries for this period.": "Aucune entrée pour cette période.",
-    "No expenses for this period.": "Aucune dépense pour cette période.",
     "No bills yet.": "Aucune facture pour l'instant.",
     "Delete this entry?": "Supprimer cette entrée ?",
     "Delete this expense?": "Supprimer cette dépense ?",
     "New entry": "Nouvelle entrée",
     "Edit entry": "Modifier l'entrée",
-    "New expense": "Nouvelle dépense",
-    "Edit expense": "Modifier la dépense",
     "Start": "Début",
     "End": "Fin",
     "Billed to": "Facturé à",
@@ -127,5 +123,8 @@
     "A password is required for a new site access.": "Un mot de passe est requis pour un nouvel accès au site.",
     "New payment": "Nouveau paiement",
     "Amount ($)": "Montant ($)",
-    "Amount is required.": "Le montant est obligatoire."
+    "Amount is required.": "Le montant est obligatoire.",
+    "Type": "Type",
+    "Expense": "Dépense",
+    "Time spent": "Temps"
 }

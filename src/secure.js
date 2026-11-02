@@ -225,7 +225,7 @@ function createSecureRouter({ db, logger, production }) {
     // Administrators can do everything; accountants can only read these pages (no organisations nor users), and clients
     // the bills and totals only
     const READ_ONLY_PAGES = {
-        accountant: ['/', '/timesheets', '/timesheets.csv', '/expenses', '/expenses.csv', '/bills', '/totals', '/totals.csv'],
+        accountant: ['/', '/timesheets', '/timesheets.csv', '/expenses', '/bills', '/totals', '/totals.csv'],
         client: ['/', '/bills', '/totals', '/totals.csv']
     };
 
@@ -251,11 +251,20 @@ function createSecureRouter({ db, logger, production }) {
         next();
     });
 
-    // Timesheets
+    // Timesheets: the hours and the expenses of the clients, listed and entered together; each kind keeps its own table,
+    // which the bills read
     const HOURS = `ROUND((julianday(t."end") - julianday(t.start)) * 24, 2)`;
     const resourceName = alias => `${alias}.code`;
 
-    // Customer and month filters shared by the timesheet and expense lists
+    // Expenses: gst and qst are flags (1 = taxable); start is stored as "YYYY-MM-DD"
+    const GST_RATE = 0.05;
+    const QST_RATE = 0.09975;
+    // The small offset rounds half-cents up like Excel despite floating point (26.925 is stored as 26.924999...)
+    const SUBTOTAL = 'ROUND(COALESCE(e.unit, 0) * COALESCE(e.rate, 0) + 1e-9, 2)';
+    const GST = `CASE WHEN e.gst = 1 THEN ROUND(${SUBTOTAL} * ${GST_RATE} + 1e-9, 2) ELSE 0 END`;
+    const QST = `CASE WHEN e.qst = 1 THEN ROUND(${SUBTOTAL} * ${QST_RATE} + 1e-9, 2) ELSE 0 END`;
+
+    // Customer and month filters, for the timesheet (t) or expense (e) table
     function readFilters(query, alias, own, months) {
         const filters = { customer: query.customer || '', month: pickMonth(query, months) };
         const conditions = [];
@@ -274,27 +283,6 @@ function createSecureRouter({ db, logger, production }) {
          WHERE x.${column} IS NOT NULL${own ? ` AND (${ownColumns.map(c => `x.${c} = ?`).join(' OR ')})` : ''}`,
         own ? ownColumns.map(() => own) : [])).map(row => row.month));
 
-    // Descriptions are only shown to administrators
-    async function findTimesheets(query, isAdmin, own) {
-        const months = await listMonths('timesheet', 'start', own);
-        const { filters, where, params } = readFilters(query, 't', own, months);
-        const rows = await db.all(
-            `SELECT t.*, ${HOURS} AS hours,
-                    ${resourceName('s')} AS customer_name,
-                    ${resourceName('b')} AS billed_name,
-                    ${resourceName('a')} AS assigned_name
-             FROM timesheet t
-             LEFT JOIN resource s ON s.id = t.shipped_resource_id
-             LEFT JOIN resource b ON b.id = t.billed_resource_id
-             LEFT JOIN resource a ON a.id = t.assigned_resource_id
-             ${where}
-             ORDER BY t.start ASC, t."end" ASC, customer_name COLLATE NOCASE ASC, t.id ASC`,
-            params
-        );
-
-        return { filters, months, rows: isAdmin ? rows : rows.map(({ description, ...row }) => row) };
-    }
-
     const listCustomers = () => db.all(`SELECT r.id, ${resourceName('r')} AS name FROM resource r ORDER BY name COLLATE NOCASE`);
 
     // The list filters only show the resources found in a column of their table (e.g. clients that have timesheets);
@@ -307,46 +295,6 @@ function createSecureRouter({ db, logger, production }) {
         own ? ownColumns.map(() => own) : []
     );
 
-    router.get('/timesheets', asyncHandler(async (req, res) => {
-        const { filters, months, rows } = await findTimesheets(req.query, res.locals.isAdmin, ownId(req));
-        const customers = await listUsedResources('timesheet', 'shipped_resource_id', ownId(req));
-        const taxed = rows.map(row => ({ ...row, ...timesheetTaxes(row) }));
-        const sum = field => round(taxed.reduce((total, row) => total + (row[field] || 0), 0));
-        const totals = { hours: sum('hours'), subtotal: sum('subtotal'), gst: sum('gst'), qst: sum('qst'), total: sum('total') };
-
-        res.render('secure/timesheets', { filters, months, rows: taxed, customers, totals, query: new URLSearchParams(filters).toString() });
-    }));
-
-    router.get('/timesheets.csv', asyncHandler(async (req, res) => {
-        const { isAdmin } = res.locals;
-        const { rows } = await findTimesheets(req.query, isAdmin, ownId(req));
-        const header = ['Start', 'End', 'Client', 'Billed to', 'Assigned to', 'Hours', 'Rate', 'Subtotal', 'GST (5 %)', 'QST (9.975 %)', 'Total',
-            ...(isAdmin ? ['Description'] : [])].map(res.locals.t).map(csvValue);
-        const fixed = value => value == null ? '' : value.toFixed(2);
-        const lines = rows.map(row => {
-            const { subtotal, gst, qst, total } = timesheetTaxes(row);
-
-            return [
-                row.start,
-                row.end,
-                row.customer_name,
-                row.billed_name,
-                row.assigned_name,
-                row.hours,
-                row.rate ?? '',
-                fixed(subtotal),
-                fixed(gst),
-                fixed(qst),
-                fixed(total),
-                ...(isAdmin ? [row.description] : [])
-            ].map(csvValue).join(',');
-        });
-
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', 'attachment; filename="timesheets.csv"');
-        res.send('﻿' + [header.join(','), ...lines].join('\r\n'));
-    }));
-
     // Hours are always taxable: the GST and QST of each entry are rounded to the cent
     function timesheetTaxes(row) {
         if (row.hours == null || row.rate == null) return { subtotal: null, gst: null, qst: null, total: null };
@@ -358,12 +306,90 @@ function createSecureRouter({ db, logger, production }) {
         return { subtotal, gst, qst, total: round(subtotal + gst + qst) };
     }
 
+    // The hours and expenses of a month and client, by date, with their subtotal, taxes and total; descriptions are only
+    // shown to administrators
+    async function findEntries(query, isAdmin, own) {
+        const months = withCurrentMonth([...await listMonths('timesheet', 'start', own), ...await listMonths('expense', 'start', own)]);
+        const hours = readFilters(query, 't', own, months);
+        const expenses = readFilters(query, 'e', own, months);
+        const names = `${resourceName('s')} AS customer_name, ${resourceName('b')} AS billed_name, ${resourceName('a')} AS assigned_name`;
+        const joins = alias => `LEFT JOIN resource s ON s.id = ${alias}.shipped_resource_id
+             LEFT JOIN resource b ON b.id = ${alias}.billed_resource_id
+             LEFT JOIN resource a ON a.id = ${alias}.assigned_resource_id`;
+        const timesheets = await db.all(`SELECT t.*, ${HOURS} AS hours, ${names} FROM timesheet t ${joins('t')} ${hours.where}`, hours.params);
+        const others = await db.all(
+            `SELECT e.*, ${SUBTOTAL} AS subtotal, ${GST} AS gst_amount, ${QST} AS qst_amount, ${SUBTOTAL} + ${GST} + ${QST} AS total, ${names}
+             FROM expense e ${joins('e')} ${expenses.where}`, expenses.params);
+        const rows = [
+            ...timesheets.map(row => ({ ...row, type: 'hours', date: (row.start || '').slice(0, 10), ...timesheetTaxes(row) })),
+            ...others.map(row => ({ ...row, type: 'expense', date: row.start, end: null, hours: null, gst: row.gst_amount, qst: row.qst_amount }))
+        ].sort((a, b) =>
+            String(a.start).localeCompare(String(b.start)) ||
+            String(a.customer_name).localeCompare(String(b.customer_name), undefined, { sensitivity: 'base' }) ||
+            a.type.localeCompare(b.type) || a.id - b.id);
+
+        return { filters: hours.filters, months, rows: isAdmin ? rows : rows.map(({ description, ...row }) => row) };
+    }
+
+    router.get('/timesheets', asyncHandler(async (req, res) => {
+        const own = ownId(req);
+        const { filters, months, rows } = await findEntries(req.query, res.locals.isAdmin, own);
+        // The clients that have hours or expenses
+        const customers = [...new Map([
+            ...await listUsedResources('timesheet', 'shipped_resource_id', own),
+            ...await listUsedResources('expense', 'shipped_resource_id', own)
+        ].map(customer => [customer.id, customer])).values()].sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
+        const sum = field => round(rows.reduce((total, row) => total + (row[field] || 0), 0));
+        const totals = { hours: sum('hours'), subtotal: sum('subtotal'), gst: sum('gst'), qst: sum('qst'), total: sum('total') };
+
+        res.render('secure/timesheets', { filters, months, rows, customers, totals, query: new URLSearchParams(filters).toString() });
+    }));
+
+    router.get('/timesheets.csv', asyncHandler(async (req, res) => {
+        const { isAdmin, t } = res.locals;
+        const { rows } = await findEntries(req.query, isAdmin, ownId(req));
+        const header = ['Type', 'Start', 'End', 'Client', 'Billed to', 'Assigned to', 'Hours', 'Units', 'Rate', 'Subtotal', 'GST (5 %)', 'QST (9.975 %)', 'Total',
+            ...(isAdmin ? ['Description'] : [])].map(t).map(csvValue);
+        const fixed = value => value == null ? '' : value.toFixed(2);
+        const lines = rows.map(row => [
+            t(row.type === 'hours' ? 'Time spent' : 'Expense'),
+            row.start,
+            row.end,
+            row.customer_name,
+            row.billed_name,
+            row.assigned_name,
+            row.hours ?? '',
+            row.type === 'expense' ? row.unit ?? '' : '',
+            row.rate ?? '',
+            fixed(row.subtotal),
+            fixed(row.gst),
+            fixed(row.qst),
+            fixed(row.total),
+            ...(isAdmin ? [row.description] : [])
+        ].map(csvValue).join(','));
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="timesheets.csv"');
+        res.send('﻿' + [header.join(','), ...lines].join('\r\n'));
+    }));
+
     const isTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(value || '');
     const resourceId = value => parseInt(value, 10) || null;
 
-    // The form edits a date with start and end times; the table stores "YYYY-MM-DD HH:MM"
+    // One form for both kinds of entries: its type shows the fields of hours (start, end, hourly rate) or of an expense
+    // (units, rate, taxes). Billed to and assigned to are not on it: they are kept on an update, and a new entry takes
+    // them from the latest entry of the same kind for its client (e.g. SPL is billed to Vigiteck)
+    async function renderEntryForm(res, entry, errors = []) {
+        res.status(errors.length ? 400 : 200).render('secure/timesheet_form', { entry, customers: await listCustomers(), errors });
+    }
+
+    // After saving, the list shows the month of the entry
+    const listMonth = date => `/secure/timesheets?month=${String(date).slice(0, 7)}`;
+
+    // Hours: the form edits a date with start and end times; the table stores "YYYY-MM-DD HH:MM"
     function readTimesheet(body) {
         const form = {
+            type: 'hours',
             date: text(body.date),
             start_time: text(body.start_time),
             end_time: text(body.end_time),
@@ -379,8 +405,6 @@ function createSecureRouter({ db, logger, production }) {
         else if (form.end_time <= form.start_time) errors.push('End time must be after start time.');
         if (form.rate !== null && form.rate < 0) errors.push('Rate cannot be negative.');
 
-        // Billed to and assigned to are not on the form: they are kept on an update, and a new entry takes them from the
-        // latest entry of its client, as for the expenses
         const values = [
             form.shipped_resource_id,
             `${form.date} ${form.start_time}`,
@@ -392,140 +416,19 @@ function createSecureRouter({ db, logger, production }) {
         return { form, values, errors };
     }
 
-    const toForm = timesheet => ({
+    const timesheetForm = timesheet => ({
         ...timesheet,
+        type: 'hours',
         date: (timesheet.start || '').slice(0, 10),
         start_time: (timesheet.start || '').slice(11, 16),
         end_time: (timesheet.end || '').slice(11, 16)
     });
 
-    async function renderTimesheetForm(res, timesheet, errors = []) {
-        const customers = await listCustomers();
-
-        res.status(errors.length ? 400 : 200).render('secure/timesheet_form', { timesheet, customers, errors });
-    }
-
-    router.get('/timesheets/new', asyncHandler(async (req, res) => {
-        const last = await db.get('SELECT shipped_resource_id, rate FROM timesheet ORDER BY id DESC LIMIT 1') || {};
-
-        await renderTimesheetForm(res, {
-            ...last,
-            shipped_resource_id: parseInt(req.query.customer, 10) || last.shipped_resource_id,
-            date: new Date().toLocaleDateString('en-CA')
-        });
-    }));
-
-    router.post('/timesheets', asyncHandler(async (req, res) => {
-        const { form, values, errors } = readTimesheet(req.body);
-
-        if (errors.length) return renderTimesheetForm(res, form, errors);
-
-        await db.run(
-            `INSERT INTO timesheet (shipped_resource_id, start, "end", rate, description, billed_resource_id, assigned_resource_id)
-             SELECT ?, ?, ?, ?, ?, latest.billed_resource_id, latest.assigned_resource_id
-             FROM (SELECT 1) LEFT JOIN (SELECT billed_resource_id, assigned_resource_id FROM timesheet WHERE shipped_resource_id = ? ORDER BY start DESC, id DESC LIMIT 1) latest`,
-            [...values, form.shipped_resource_id]
-        );
-        res.redirect('/secure/timesheets');
-    }));
-
-    router.get('/timesheets/:id/edit', asyncHandler(async (req, res, next) => {
-        const timesheet = await db.get('SELECT * FROM timesheet WHERE id = ?', [req.params.id]);
-
-        if (!timesheet) return next();
-
-        await renderTimesheetForm(res, toForm(timesheet));
-    }));
-
-    router.post('/timesheets/:id', asyncHandler(async (req, res) => {
-        const { form, values, errors } = readTimesheet(req.body);
-
-        form.id = req.params.id;
-
-        if (errors.length) return renderTimesheetForm(res, form, errors);
-
-        await db.run(
-            'UPDATE timesheet SET shipped_resource_id = ?, start = ?, "end" = ?, rate = ?, description = ? WHERE id = ?',
-            [...values, form.id]
-        );
-        res.redirect('/secure/timesheets');
-    }));
-
-    router.post('/timesheets/:id/delete', asyncHandler(async (req, res) => {
-        await db.run('DELETE FROM timesheet WHERE id = ?', [req.params.id]);
-        res.redirect('/secure/timesheets');
-    }));
-
-    // Expenses: gst and qst are flags (1 = taxable); start is stored as "YYYY-MM-DD"
-    const GST_RATE = 0.05;
-    const QST_RATE = 0.09975;
-    // The small offset rounds half-cents up like Excel despite floating point (26.925 is stored as 26.924999...)
-    const SUBTOTAL = 'ROUND(COALESCE(e.unit, 0) * COALESCE(e.rate, 0) + 1e-9, 2)';
-    const GST = `CASE WHEN e.gst = 1 THEN ROUND(${SUBTOTAL} * ${GST_RATE} + 1e-9, 2) ELSE 0 END`;
-    const QST = `CASE WHEN e.qst = 1 THEN ROUND(${SUBTOTAL} * ${QST_RATE} + 1e-9, 2) ELSE 0 END`;
-
-    async function findExpenses(query, own) {
-        const months = await listMonths('expense', 'start', own);
-        const { filters, where, params } = readFilters(query, 'e', own, months);
-        const rows = await db.all(
-            `SELECT e.*, ${SUBTOTAL} AS subtotal, ${GST} AS gst_amount, ${QST} AS qst_amount,
-                    ${SUBTOTAL} + ${GST} + ${QST} AS total,
-                    ${resourceName('s')} AS customer_name,
-                    ${resourceName('b')} AS billed_name,
-                    ${resourceName('a')} AS assigned_name
-             FROM expense e
-             LEFT JOIN resource s ON s.id = e.shipped_resource_id
-             LEFT JOIN resource b ON b.id = e.billed_resource_id
-             LEFT JOIN resource a ON a.id = e.assigned_resource_id
-             ${where}
-             ORDER BY e.start ASC, customer_name COLLATE NOCASE ASC, e.id ASC`,
-            params
-        );
-
-        return { filters, months, rows };
-    }
-
-    router.get('/expenses', asyncHandler(async (req, res) => {
-        const { filters, months, rows } = await findExpenses(req.query, ownId(req));
-        const customers = await listUsedResources('expense', 'shipped_resource_id', ownId(req));
-        const totals = rows.reduce((acc, row) => {
-            acc.subtotal += row.subtotal;
-            acc.gst += row.gst_amount;
-            acc.qst += row.qst_amount;
-            acc.total += row.total;
-
-            return acc;
-        }, { subtotal: 0, gst: 0, qst: 0, total: 0 });
-
-        res.render('secure/expenses', { filters, months, rows, customers, totals, query: new URLSearchParams(filters).toString() });
-    }));
-
-    router.get('/expenses.csv', asyncHandler(async (req, res) => {
-        const { rows } = await findExpenses(req.query, ownId(req));
-        const header = ['Date', 'Client', 'Billed to', 'Assigned to', 'Units', 'Rate', 'Subtotal', 'GST (5 %)', 'QST (9.975 %)', 'Total', 'Description'].map(res.locals.t).map(csvValue);
-        const lines = rows.map(row => [
-            row.start,
-            row.customer_name,
-            row.billed_name,
-            row.assigned_name,
-            row.unit ?? '',
-            row.rate ?? '',
-            row.subtotal.toFixed(2),
-            row.gst_amount.toFixed(2),
-            row.qst_amount.toFixed(2),
-            row.total.toFixed(2),
-            row.description
-        ].map(csvValue).join(','));
-
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', 'attachment; filename="expenses.csv"');
-        res.send('﻿' + [header.join(','), ...lines].join('\r\n'));
-    }));
-
+    // Expenses: the rate of an expense is shown in its own field, apart from the hourly rate
     function readExpense(body) {
         const expense = {
             shipped_resource_id: resourceId(body.shipped_resource_id),
-            start: text(body.start),
+            start: text(body.date),
             unit: number(body.unit),
             rate: number(body.rate),
             gst: body.gst ? 1 : 0,
@@ -541,51 +444,89 @@ function createSecureRouter({ db, logger, production }) {
         return { expense, errors };
     }
 
-    // The form has the fields of the list, in its order; billed to and assigned to are kept on an update, and a new
-    // expense takes them from the latest expense of its client (e.g. SPL is billed to Vigiteck)
     const EXPENSE_FIELDS = ['start', 'shipped_resource_id', 'unit', 'rate', 'gst', 'qst', 'description'];
-    const INHERITED_FIELDS = ['billed_resource_id', 'assigned_resource_id'];
+    const expenseForm = expense => ({ ...expense, type: 'expense', date: expense.start, rate: null, expense_rate: expense.rate });
 
-    async function renderExpenseForm(res, expense, errors = []) {
-        const customers = await listCustomers();
+    router.get('/timesheets/new', asyncHandler(async (req, res) => {
+        const last = await db.get('SELECT shipped_resource_id, rate FROM timesheet ORDER BY id DESC LIMIT 1') || {};
 
-        res.status(errors.length ? 400 : 200).render('secure/expense_form', { expense, customers, errors });
-    }
-
-    router.get('/expenses/new', asyncHandler(async (req, res) => {
-        const last = await db.get('SELECT shipped_resource_id FROM expense ORDER BY id DESC LIMIT 1') || {};
-
-        await renderExpenseForm(res, {
-            ...last,
+        await renderEntryForm(res, {
+            type: req.query.type === 'expense' ? 'expense' : 'hours',
             shipped_resource_id: parseInt(req.query.customer, 10) || last.shipped_resource_id,
-            start: new Date().toLocaleDateString('en-CA'),
+            date: new Date().toLocaleDateString('en-CA'),
+            rate: last.rate,
             unit: 1,
             gst: 1,
             qst: 1
         });
     }));
 
-    router.post('/expenses', asyncHandler(async (req, res) => {
-        const { expense, errors } = readExpense(req.body);
+    // A new entry is hours or an expense, by its type
+    router.post('/timesheets', asyncHandler(async (req, res) => {
+        if (req.body.type === 'expense') {
+            const { expense, errors } = readExpense(req.body);
 
-        if (errors.length) return renderExpenseForm(res, expense, errors);
+            if (errors.length) return renderEntryForm(res, expenseForm(expense), errors);
 
-        const inherited = await db.get(`SELECT ${INHERITED_FIELDS.join(', ')} FROM expense WHERE shipped_resource_id = ? ORDER BY start DESC, id DESC LIMIT 1`, [expense.shipped_resource_id]) || {};
-        const fields = [...EXPENSE_FIELDS, ...INHERITED_FIELDS];
+            await db.run(
+                `INSERT INTO expense (${EXPENSE_FIELDS.join(', ')}, billed_resource_id, assigned_resource_id)
+                 SELECT ${EXPENSE_FIELDS.map(() => '?').join(', ')}, latest.billed_resource_id, latest.assigned_resource_id
+                 FROM (SELECT 1) LEFT JOIN (SELECT billed_resource_id, assigned_resource_id FROM expense WHERE shipped_resource_id = ? ORDER BY start DESC, id DESC LIMIT 1) latest`,
+                [...EXPENSE_FIELDS.map(field => expense[field]), expense.shipped_resource_id]
+            );
+
+            return res.redirect(listMonth(expense.start));
+        }
+
+        const { form, values, errors } = readTimesheet(req.body);
+
+        if (errors.length) return renderEntryForm(res, form, errors);
 
         await db.run(
-            `INSERT INTO expense (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
-            fields.map(field => expense[field] ?? inherited[field] ?? null)
+            `INSERT INTO timesheet (shipped_resource_id, start, "end", rate, description, billed_resource_id, assigned_resource_id)
+             SELECT ?, ?, ?, ?, ?, latest.billed_resource_id, latest.assigned_resource_id
+             FROM (SELECT 1) LEFT JOIN (SELECT billed_resource_id, assigned_resource_id FROM timesheet WHERE shipped_resource_id = ? ORDER BY start DESC, id DESC LIMIT 1) latest`,
+            [...values, form.shipped_resource_id]
         );
-        res.redirect('/secure/expenses');
+        res.redirect(listMonth(form.date));
     }));
+
+    router.get('/timesheets/:id/edit', asyncHandler(async (req, res, next) => {
+        const timesheet = await db.get('SELECT * FROM timesheet WHERE id = ?', [req.params.id]);
+
+        if (!timesheet) return next();
+
+        await renderEntryForm(res, timesheetForm(timesheet));
+    }));
+
+    router.post('/timesheets/:id', asyncHandler(async (req, res) => {
+        const { form, values, errors } = readTimesheet(req.body);
+
+        form.id = req.params.id;
+
+        if (errors.length) return renderEntryForm(res, form, errors);
+
+        await db.run(
+            'UPDATE timesheet SET shipped_resource_id = ?, start = ?, "end" = ?, rate = ?, description = ? WHERE id = ?',
+            [...values, form.id]
+        );
+        res.redirect(listMonth(form.date));
+    }));
+
+    router.post('/timesheets/:id/delete', asyncHandler(async (req, res) => {
+        await db.run('DELETE FROM timesheet WHERE id = ?', [req.params.id]);
+        res.redirect('/secure/timesheets');
+    }));
+
+    // The expenses are edited with the same form, and listed with the hours
+    router.get('/expenses', (req, res) => res.redirect(301, '/secure/timesheets'));
 
     router.get('/expenses/:id/edit', asyncHandler(async (req, res, next) => {
         const expense = await db.get('SELECT * FROM expense WHERE id = ?', [req.params.id]);
 
         if (!expense) return next();
 
-        await renderExpenseForm(res, expense);
+        await renderEntryForm(res, expenseForm(expense));
     }));
 
     router.post('/expenses/:id', asyncHandler(async (req, res) => {
@@ -593,18 +534,18 @@ function createSecureRouter({ db, logger, production }) {
 
         expense.id = req.params.id;
 
-        if (errors.length) return renderExpenseForm(res, expense, errors);
+        if (errors.length) return renderEntryForm(res, expenseForm(expense), errors);
 
         await db.run(
             `UPDATE expense SET ${EXPENSE_FIELDS.map(field => `${field} = ?`).join(', ')} WHERE id = ?`,
             [...EXPENSE_FIELDS.map(field => expense[field]), expense.id]
         );
-        res.redirect('/secure/expenses');
+        res.redirect(listMonth(expense.start));
     }));
 
     router.post('/expenses/:id/delete', asyncHandler(async (req, res) => {
         await db.run('DELETE FROM expense WHERE id = ?', [req.params.id]);
-        res.redirect('/secure/expenses');
+        res.redirect('/secure/timesheets');
     }));
 
     // Bills: calculated, one per month and client; the bill is sent to the payer, else to the billed resource, else to the client

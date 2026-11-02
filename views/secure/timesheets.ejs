@@ -10,7 +10,7 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr><th class="num"><%= t('Week') %></th><th><%= t('Date') %></th><th><%= t('Day') %></th><th><%= t('Client') %></th><th><%= t('Time') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
+                        <tr><th class="num"><%= t('Week') %></th><th><%= t('Date') %></th><th><%= t('Day') %></th><th><%= t('Client') %></th><th><%= t('Type') %></th><th><%= t('Time') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
                         <tr class="filter-row">
                             <td></td>
                             <td>
@@ -30,7 +30,7 @@
                                     <% }); %>
                                 </select>
                             </td>
-                            <td colspan="6"></td>
+                            <td colspan="7"></td>
                             <% if (isAdmin) { %><td></td><% } %>
                             <td class="actions">
                                 <a href="/secure/timesheets?customer=&month=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
@@ -39,16 +39,23 @@
                     </thead>
                     <tbody>
                         <% if (rows.length === 0) { %>
-                            <tr><td colspan="<%= isAdmin ? 12 : 11 %>" class="empty"><%= t('No entries for this period.') %></td></tr>
+                            <tr><td colspan="<%= isAdmin ? 13 : 12 %>" class="empty"><%= t('No entries for this period.') %></td></tr>
                         <% } %>
                         <% rows.forEach(row => { %>
+                            <%# Hours show their times and number of hours, expenses their units %>
+                            <% const hours = row.type === 'hours'; const path = `/secure/${hours ? 'timesheets' : 'expenses'}/${row.id}`; %>
                             <tr>
                                 <% const date = (row.start || '').slice(0, 10); %>
                                 <td class="num"><%= date ? weekOfYear(date) : '' %></td>
                                 <td class="nowrap"><%= date %></td>
                                 <td><%= date ? dayOfWeek(date) : '' %></td>
                                 <td><%= row.customer_name %></td>
+                                <td><%= t(hours ? 'Time spent' : 'Expense') %></td>
+                                <% if (hours) { %>
                                 <td class="nowrap"><%= (row.start || '').slice(11, 16) %> – <%= (row.end || '').slice(11, 16) %><% if (row.hours != null) { %> (<%= row.hours.toFixed(2) %>)<% } %></td>
+                                <% } else { %>
+                                <td class="nowrap"><%= row.unit %> × </td>
+                                <% } %>
                                 <td class="num"><%= money(row.rate) %></td>
                                 <td class="num"><%= money(row.subtotal) %></td>
                                 <td class="num"><%= money(row.gst) %></td>
@@ -57,8 +64,8 @@
                                 <% if (isAdmin) { %>
                                 <td class="description"><%= row.description %></td>
                                 <td class="actions">
-                                    <a href="/secure/timesheets/<%= row.id %>/edit" class="button small" title="<%= t('Edit') %>" aria-label="<%= t('Edit') %>"><%- include('icon', { name: 'edit' }) %></a>
-                                    <form method="post" action="/secure/timesheets/<%= row.id %>/delete" class="inline" data-confirm="<%= t('Delete this entry?') %>">
+                                    <a href="<%= path %>/edit" class="button small" title="<%= t('Edit') %>" aria-label="<%= t('Edit') %>"><%- include('icon', { name: 'edit' }) %></a>
+                                    <form method="post" action="<%= path %>/delete" class="inline" data-confirm="<%= t(hours ? 'Delete this entry?' : 'Delete this expense?') %>">
                                         <input type="hidden" name="_csrf" value="<%= csrf %>">
                                         <button type="submit" class="small delete" title="<%= t('Delete') %>" aria-label="<%= t('Delete') %>"><%- include('icon', { name: 'delete' }) %></button>
                                     </form>
@@ -72,6 +79,7 @@
                     <tfoot>
                         <tr class="total-row">
                             <td class="nowrap" colspan="3"><%= rows.length %> <%= rows.length === 1 ? t('record') : t('records') %></td>
+                            <td></td>
                             <td></td>
                             <td class="nowrap">(<%= totals.hours.toFixed(2) %>)</td>
                             <td></td>

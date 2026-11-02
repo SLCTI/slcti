@@ -1,32 +1,56 @@
-<%- include('header', { title: timesheet.id ? t('Edit entry') : t('New entry') }) %>
-            <form method="post" action="/secure/timesheets<%= timesheet.id ? '/' + timesheet.id : '' %>" class="card">
-                <h1><%= timesheet.id ? t('Edit entry') : t('New entry') %></h1>
+<%- include('header', { title: entry.id ? t('Edit entry') : t('New entry') }) %>
+<%
+    const hours = entry.type !== 'expense';
+    const decimals = value => value != null && value !== '' ? Number(value).toFixed(2) : '';
+%>
+            <form method="post" action="<%= entry.id ? `/secure/${hours ? 'timesheets' : 'expenses'}/${entry.id}` : '/secure/timesheets' %>" class="card">
+                <h1><%= entry.id ? t('Edit entry') : t('New entry') %></h1>
                 <% errors.forEach(error => { %><p class="error"><%= t(error) %></p><% }); %>
                 <% if (customers.length === 0) { %>
                     <p class="error"><%- t('Add an <a href="/secure/resources/new">organisation</a> first.') %></p>
                 <% } %>
                 <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <%# The type of a saved entry cannot change: hours and expenses are kept in separate tables %>
+                <label><%= t('Type') %>
+                    <select name="type" data-entry-type <%= entry.id ? 'disabled' : '' %>>
+                        <option value="hours" <%= hours ? 'selected' : '' %>><%= t('Time spent') %></option>
+                        <option value="expense" <%= hours ? '' : 'selected' %>><%= t('Expense') %></option>
+                    </select>
+                </label>
                 <label><%= t('Date') %>
-                    <input type="date" name="date" value="<%= timesheet.date %>" required>
+                    <input type="date" name="date" value="<%= entry.date %>" required>
                 </label>
                 <label><%= t('Client') %>
                     <select name="shipped_resource_id" required>
                         <% customers.forEach(customer => { %>
-                            <option value="<%= customer.id %>" <%= customer.id === Number(timesheet.shipped_resource_id) ? 'selected' : '' %>><%= customer.name %></option>
+                            <option value="<%= customer.id %>" <%= customer.id === Number(entry.shipped_resource_id) ? 'selected' : '' %>><%= customer.name %></option>
                         <% }); %>
                     </select>
                 </label>
-                <label><%= t('Start') %>
-                    <input type="time" name="start_time" value="<%= timesheet.start_time %>" step="900" required>
-                </label>
-                <label><%= t('End') %>
-                    <input type="time" name="end_time" value="<%= timesheet.end_time %>" step="900" required>
-                </label>
-                <label><%= t('Hourly rate ($)') %>
-                    <input type="number" name="rate" value="<%= timesheet.rate != null && timesheet.rate !== '' ? Number(timesheet.rate).toFixed(2) : '' %>" min="0" step="0.01" data-decimals="2">
-                </label>
+                <%# The fields of the other type are disabled: they are neither checked nor sent %>
+                <fieldset data-type="hours" <%= hours ? '' : 'disabled hidden' %>>
+                    <label><%= t('Start') %>
+                        <input type="time" name="start_time" value="<%= entry.start_time %>" step="900" required>
+                    </label>
+                    <label><%= t('End') %>
+                        <input type="time" name="end_time" value="<%= entry.end_time %>" step="900" required>
+                    </label>
+                    <label><%= t('Hourly rate ($)') %>
+                        <input type="number" name="rate" value="<%= decimals(entry.rate) %>" min="0" step="0.01" data-decimals="2">
+                    </label>
+                </fieldset>
+                <fieldset data-type="expense" <%= hours ? 'disabled hidden' : '' %>>
+                    <label><%= t('Units') %>
+                        <input type="number" name="unit" value="<%= entry.unit %>" step="any" required>
+                    </label>
+                    <label><%= t('Rate ($)') %>
+                        <input type="number" name="rate" value="<%= decimals(entry.expense_rate) %>" step="0.01" data-decimals="2" required>
+                    </label>
+                    <label class="check"><input type="checkbox" name="gst" value="1" <%= entry.gst ? 'checked' : '' %>> <%= t('GST (5 %)') %></label>
+                    <label class="check"><input type="checkbox" name="qst" value="1" <%= entry.qst ? 'checked' : '' %>> <%= t('QST (9.975 %)') %></label>
+                </fieldset>
                 <label><%= t('Description') %>
-                    <textarea name="description" rows="4"><%= timesheet.description %></textarea>
+                    <textarea name="description" rows="4"><%= entry.description %></textarea>
                 </label>
                 <div class="form-actions">
                     <a href="/secure/timesheets" class="button secondary" title="<%= t('Cancel') %>" aria-label="<%= t('Cancel') %>"><%- include('icon', { name: 'clear' }) %></a>
