@@ -1,6 +1,6 @@
 # Usage: .\bin\deploy.ps1 [-Database]
 # Commits and pushes the code, then deploys it on the server with .env.production as its .env.
-# The server comes from SLCTI_DEPLOY_* in the local .env; the settings and the database never go through Git: they are copied with scp.
+# The server and the Git repository come from SLCTI_DEPLOY_* in the local .env; the settings and the database never go through Git: they are copied with scp.
 
 param(
     # Also replace the production database with the local one (otherwise it is only sent when the server has none)
@@ -42,15 +42,16 @@ foreach ($Line in Get-Content .env) {
     }
 }
 
-foreach ($Name in 'SLCTI_DEPLOY_USER', 'SLCTI_DEPLOY_HOST', 'SLCTI_DEPLOY_DIR', 'SLCTI_DEPLOY_SERVICE') {
+foreach ($Name in 'SLCTI_DEPLOY_USER', 'SLCTI_DEPLOY_HOST', 'SLCTI_DEPLOY_DIR', 'SLCTI_DEPLOY_SERVICE', 'SLCTI_DEPLOY_REPOSITORY') {
     if (-not $Local[$Name]) {
         throw "$Name is missing from .env (see .env.example)"
     }
 }
 
-$APP_DIR = $Local.SLCTI_DEPLOY_DIR
-$SERVICE = $Local.SLCTI_DEPLOY_SERVICE
-$SERVER  = "$($Local.SLCTI_DEPLOY_USER)@$($Local.SLCTI_DEPLOY_HOST)"
+$APP_DIR    = $Local.SLCTI_DEPLOY_DIR
+$SERVICE    = $Local.SLCTI_DEPLOY_SERVICE
+$REPOSITORY = $Local.SLCTI_DEPLOY_REPOSITORY
+$SERVER     = "$($Local.SLCTI_DEPLOY_USER)@$($Local.SLCTI_DEPLOY_HOST)"
 
 # -------- Checks --------
 if (-not (Test-Path $ENV_FILE)) {
@@ -95,6 +96,13 @@ if (git status --porcelain) {
 
 else {
     Write-Host "No changes to commit"
+}
+
+# The local remote follows the repository of .env, as the server does below
+if ((git remote get-url $REMOTE) -ne $REPOSITORY) {
+    Write-Host "Pointing $REMOTE to $REPOSITORY..."
+    git remote set-url $REMOTE $REPOSITORY
+    Assert-Success "git remote set-url failed"
 }
 
 git push $REMOTE $BRANCH
@@ -164,6 +172,7 @@ sed -i 's/\r$//' private/env.upload
 grep -q '^NODE_ENV=production' private/env.upload || { echo The settings are not a production configuration; exit 1; }
 
 echo Updating code...
+git remote set-url origin __REPOSITORY__
 git fetch origin
 git reset --hard origin/main
 
@@ -219,7 +228,7 @@ echo The site does not answer on https://localhost:3000/
 exit 1
 '@
 
-$Script = $Script.Replace("__APP_DIR__", $APP_DIR).Replace("__SERVICE__", $SERVICE).Replace("__SEND_DATABASE__", [int][bool]$SendDatabase).Replace("`r", "")
+$Script = $Script.Replace("__APP_DIR__", $APP_DIR).Replace("__SERVICE__", $SERVICE).Replace("__REPOSITORY__", $REPOSITORY).Replace("__SEND_DATABASE__", [int][bool]$SendDatabase).Replace("`r", "")
 
 ssh $SERVER $Script
 Assert-Success "Deployment failed on the server"
