@@ -10,6 +10,13 @@ document.addEventListener('click', event => {
     if (event.target.closest('[data-print]')) window.print();
 });
 
+// Show amounts with a fixed number of decimals (e.g. 95 becomes 95.00) once typed
+document.addEventListener('change', event => {
+    const field = event.target;
+
+    if (field.dataset && field.dataset.decimals && field.value !== '' && !isNaN(field.value)) field.value = Number(field.value).toFixed(Number(field.dataset.decimals));
+});
+
 // Submit filter forms as soon as one of their fields changes
 document.addEventListener('change', event => {
     const form = event.target.form;

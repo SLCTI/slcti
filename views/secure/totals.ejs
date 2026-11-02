@@ -15,7 +15,7 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr><th class="num"><%= t('Bill') %></th><th><%= t('Month') %></th><th><%= t('Client') %></th><th><%= t('Payer') %></th><th class="num"><%= t('Payment') %></th><th class="num"><%= t('Total') %></th><th class="num"><%= t('Difference') %></th><th></th></tr>
+                        <tr><th class="num"><%= t('Bill') %></th><th><%= t('Month') %></th><th><%= t('Client') %></th><th><%= t('Payer') %></th><th><%= t('Date') %></th><th class="num"><%= t('Payment') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><th class="num"><%= t('Difference') %></th><th></th></tr>
                         <tr class="filter-row">
                             <td></td>
                             <td>
@@ -42,7 +42,7 @@
                                     <% }); %>
                                 </select>
                             </td>
-                            <td colspan="3"></td>
+                            <td colspan="7"></td>
                             <td class="actions">
                                 <a href="/secure/totals?customer=&payer=&month=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
                             </td>
@@ -50,7 +50,7 @@
                     </thead>
                     <tbody>
                         <% if (bills.length === 0) { %>
-                            <tr><td colspan="8" class="empty"><%= t('No bills yet.') %></td></tr>
+                            <tr><td colspan="12" class="empty"><%= t('No bills yet.') %></td></tr>
                         <% } %>
                         <% bills.forEach(bill => { %>
                             <tr>
@@ -58,7 +58,11 @@
                                 <td class="nowrap"><%= bill.month %></td>
                                 <td><%= bill.customer_name %></td>
                                 <td><%= bill.payer_name %></td>
+                                <td class="nowrap"><%= bill.paid_dates.join(', ') %></td>
                                 <td class="num"><%= bill.paid ? money(bill.paid) : '' %></td>
+                                <td class="num"><%= money(bill.subtotal) %></td>
+                                <td class="num"><%= money(bill.gst) %></td>
+                                <td class="num"><%= money(bill.qst) %></td>
                                 <td class="num"><%= money(bill.total) %></td>
                                 <% const diff = difference(bill.paid, bill.total); %>
                                 <td class="num <%= sign(diff) %>"><%= diff ? money(diff) : '' %></td>
@@ -68,13 +72,16 @@
                     </tbody>
                     <tfoot>
                         <tr class="total-row">
-                            <td colspan="4"><%= bills.length %> <%= bills.length === 1 ? t('bill') : t('bills') %></td>
+                            <td colspan="5"><%= bills.length %> <%= bills.length === 1 ? t('bill') : t('bills') %></td>
                             <td class="num"><%= money(paid) %></td>
+                            <td class="num"><%= money(subtotal) %></td>
+                            <td class="num"><%= money(gst) %></td>
+                            <td class="num"><%= money(qst) %></td>
                             <td class="num"><%= money(total) %></td>
                             <td class="num <%= sign(difference(paid, total)) %>"><%= money(difference(paid, total)) %></td>
                             <td class="actions">
                                 <% if (isAdmin) { %>
-                                <a href="/secure/payments/new" class="button small" title="<%= t('New payment') %>" aria-label="<%= t('New payment') %>"><%- include('icon', { name: 'add' }) %></a>
+                                <a href="/secure/payments/new?customer=<%= filters.customer %>&amp;payer=<%= filters.payer %>" class="button small" title="<%= t('New payment') %>" aria-label="<%= t('New payment') %>"><%- include('icon', { name: 'add' }) %></a>
                                 <% } %>
                                 <a href="/secure/totals.csv?<%= query %>" class="button small secondary" title="<%= t('Export CSV') %>" aria-label="<%= t('Export CSV') %>"><%- include('icon', { name: 'download' }) %></a>
                             </td>

@@ -28,10 +28,11 @@
                         <!-- Secure section, shown once signed in -->
                         <div class="menu-secure">
                             <% if (locals.isAdmin) { %><a href="/secure/resources"><%= t('Organisations') %></a><a href="/secure/users"><%= t('Users') %></a><% } %>
+                            <% if (session.role !== 'client') { %>
                             <a href="/secure/timesheets"><%= t('Timesheets') %></a>
                             <a href="/secure/expenses"><%= t('Expenses') %></a>
+                            <% } %>
                             <a href="/secure/bills"><%= t('Bills') %></a>
-                            <a href="/secure/payments"><%= t('Payments') %></a>
                             <a href="/secure/totals"><%= t('Totals') %></a>
                         </div>
                     <% } %>

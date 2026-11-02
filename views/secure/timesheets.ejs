@@ -1,4 +1,5 @@
 <%- include('header', { title: t('Timesheets') }) %>
+<% const money = value => value != null ? value.toFixed(2) + ' $' : ''; %>
             <div class="toolbar">
                 <h1><%= t('Timesheets') %></h1>
             </div>
@@ -9,7 +10,7 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr><th class="num"><%= t('Week') %></th><th><%= t('Date') %></th><th><%= t('Day') %></th><th><%= t('Time') %></th><th><%= t('Client') %></th><th class="num"><%= t('Hours') %></th><th class="num"><%= t('Rate') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
+                        <tr><th class="num"><%= t('Week') %></th><th><%= t('Date') %></th><th><%= t('Day') %></th><th><%= t('Client') %></th><th><%= t('Time') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
                         <tr class="filter-row">
                             <td></td>
                             <td>
@@ -21,7 +22,6 @@
                                 </select>
                             </td>
                             <td></td>
-                            <td></td>
                             <td>
                                 <select name="customer" form="filters" aria-label="<%= t('Client') %>">
                                     <option value=""><%= t('All') %></option>
@@ -30,8 +30,7 @@
                                     <% }); %>
                                 </select>
                             </td>
-                            <td></td>
-                            <td></td>
+                            <td colspan="6"></td>
                             <% if (isAdmin) { %><td></td><% } %>
                             <td class="actions">
                                 <a href="/secure/timesheets?customer=&month=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
@@ -40,7 +39,7 @@
                     </thead>
                     <tbody>
                         <% if (rows.length === 0) { %>
-                            <tr><td colspan="<%= isAdmin ? 9 : 8 %>" class="empty"><%= t('No entries for this period.') %></td></tr>
+                            <tr><td colspan="<%= isAdmin ? 12 : 11 %>" class="empty"><%= t('No entries for this period.') %></td></tr>
                         <% } %>
                         <% rows.forEach(row => { %>
                             <tr>
@@ -48,10 +47,13 @@
                                 <td class="num"><%= date ? weekOfYear(date) : '' %></td>
                                 <td class="nowrap"><%= date %></td>
                                 <td><%= date ? dayOfWeek(date) : '' %></td>
-                                <td class="nowrap"><%= (row.start || '').slice(11, 16) %> – <%= (row.end || '').slice(11, 16) %></td>
                                 <td><%= row.customer_name %></td>
-                                <td class="num"><%= row.hours != null ? row.hours.toFixed(2) : '' %></td>
-                                <td class="num"><%= row.rate != null ? row.rate.toFixed(2) + ' $' : '' %></td>
+                                <td class="nowrap"><%= (row.start || '').slice(11, 16) %> – <%= (row.end || '').slice(11, 16) %><% if (row.hours != null) { %> (<%= row.hours.toFixed(2) %>)<% } %></td>
+                                <td class="num"><%= money(row.rate) %></td>
+                                <td class="num"><%= money(row.subtotal) %></td>
+                                <td class="num"><%= money(row.gst) %></td>
+                                <td class="num"><%= money(row.qst) %></td>
+                                <td class="num"><%= money(row.total) %></td>
                                 <% if (isAdmin) { %>
                                 <td class="description"><%= row.description %></td>
                                 <td class="actions">
@@ -71,9 +73,12 @@
                         <tr class="total-row">
                             <td class="nowrap" colspan="3"><%= rows.length %> <%= rows.length === 1 ? t('record') : t('records') %></td>
                             <td></td>
+                            <td class="nowrap">(<%= totals.hours.toFixed(2) %>)</td>
                             <td></td>
-                            <td class="num"><%= totals.hours.toFixed(2) %></td>
-                            <td class="num"><%= totals.amount.toFixed(2) %> $</td>
+                            <td class="num"><%= money(totals.subtotal) %></td>
+                            <td class="num"><%= money(totals.gst) %></td>
+                            <td class="num"><%= money(totals.qst) %></td>
+                            <td class="num"><%= money(totals.total) %></td>
                             <% if (isAdmin) { %><td></td><% } %>
                             <td class="actions">
                                 <% if (isAdmin) { %>

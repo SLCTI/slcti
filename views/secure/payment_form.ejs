@@ -1,6 +1,6 @@
-<%- include('header', { title: payment.id ? t('Edit payment') : t('New payment') }) %>
-            <form method="post" action="/secure/payments<%= payment.id ? '/' + payment.id : '' %>" class="card">
-                <h1><%= payment.id ? t('Edit payment') : t('New payment') %></h1>
+<%- include('header', { title: t('New payment') }) %>
+            <form method="post" action="/secure/payments" class="card">
+                <h1><%= t('New payment') %></h1>
                 <% errors.forEach(error => { %><p class="error"><%= t(error) %></p><% }); %>
                 <% if (customers.length === 0) { %>
                     <p class="error"><%- t('Add an <a href="/secure/resources/new">organisation</a> first.') %></p>
@@ -26,10 +26,10 @@
                     </select>
                 </label>
                 <label><%= t('Amount ($)') %>
-                    <input type="number" name="amount" value="<%= payment.amount %>" step="0.01" required>
+                    <input type="number" name="amount" value="<%= payment.amount != null && payment.amount !== '' ? Number(payment.amount).toFixed(2) : '' %>" step="0.01" data-decimals="2" required>
                 </label>
                 <div class="form-actions">
-                    <a href="/secure/payments" class="button secondary" title="<%= t('Cancel') %>" aria-label="<%= t('Cancel') %>"><%- include('icon', { name: 'clear' }) %></a>
+                    <a href="/secure/totals" class="button secondary" title="<%= t('Cancel') %>" aria-label="<%= t('Cancel') %>"><%- include('icon', { name: 'clear' }) %></a>
                     <button type="submit" title="<%= t('Save') %>" aria-label="<%= t('Save') %>"><%- include('icon', { name: 'save' }) %></button>
                 </div>
             </form>
