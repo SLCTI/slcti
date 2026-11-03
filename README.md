@@ -147,7 +147,9 @@ node src/backup_db.js
 ```
 
 ## TODO
-- Add invoices, linked to expenses, as downloadable attachments.
+- Allow users to update their password;
+- Add invoices, linked to expenses, as downloadable attachments;
+- Add an Associate role.
 
 ## Contact
 ### SLCIT

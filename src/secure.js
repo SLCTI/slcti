@@ -881,9 +881,9 @@ function createSecureRouter({ db, logger, production }) {
     // Resources (the page was named Customers before)
     router.get('/customers', (req, res) => res.redirect(301, '/secure/resources'));
 
-    // The contact, email and telephone are on the users of the organisation; its invoices go to its billed resource, if any
-    const RESOURCE_TEXTS = ['code', 'organisation', 'neq', 'gst_number', 'qst_number', 'bank_account', 'website', 'address'];
-    const RESOURCE_FIELDS = [...RESOURCE_TEXTS, 'billed_resource_id'];
+    // The contact, email and telephone are on the users of the organisation. Its invoices go to its billed resource, if
+    // any, which is not on the form: saving the form keeps it
+    const RESOURCE_FIELDS = ['code', 'organisation', 'neq', 'gst_number', 'qst_number', 'bank_account', 'website', 'address'];
 
     const countUses = `
         (SELECT COUNT(*) FROM timesheet x WHERE x.resource_id = r.id)
@@ -904,25 +904,21 @@ function createSecureRouter({ db, logger, production }) {
         res.render('secure/resources', { resources, error: RESOURCE_ERRORS[req.query.error] || null });
     }));
 
-    async function readResource(body, id) {
-        const resource = { ...Object.fromEntries(RESOURCE_TEXTS.map(field => [field, text(body[field])])), billed_resource_id: resourceId(body.billed_resource_id) };
+    function readResource(body, id) {
+        const resource = Object.fromEntries(RESOURCE_FIELDS.map(field => [field, text(body[field])]));
         const errors = [];
 
         if (!resource.code) errors.push('Code is required.');
-        if (resource.billed_resource_id && (resource.billed_resource_id === id || !await db.get('SELECT 1 FROM resource WHERE id = ?', [resource.billed_resource_id]))) errors.push('Billed to is invalid.');
 
         return { resource: { ...resource, id }, errors };
     }
 
-    // Billed to lists the other organisations
-    const renderResourceForm = async (res, resource, errors = []) => res.status(errors.length ? 400 : 200).render('secure/resource_form', {
-        resource, organisations: (await listCustomers()).filter(organisation => organisation.id !== resource.id), errors
-    });
+    const renderResourceForm = (res, resource, errors = []) => res.status(errors.length ? 400 : 200).render('secure/resource_form', { resource, errors });
 
     router.get('/resources/new', asyncHandler(async (req, res) => renderResourceForm(res, {})));
 
     router.post('/resources', asyncHandler(async (req, res) => {
-        const { resource, errors } = await readResource(req.body, null);
+        const { resource, errors } = readResource(req.body, null);
 
         if (errors.length) return renderResourceForm(res, resource, errors);
 
@@ -946,7 +942,7 @@ function createSecureRouter({ db, logger, production }) {
 
         if (!existing) return next();
 
-        const { resource, errors } = await readResource(req.body, existing.id);
+        const { resource, errors } = readResource(req.body, existing.id);
 
         if (errors.length) return renderResourceForm(res, resource, errors);
 
