@@ -1,6 +1,8 @@
 .ssl/
 .vscode/
 .well-known/acme-challenge/*
+data/banking/
+data/billing/
 logs/
 node_modules/
 private/
