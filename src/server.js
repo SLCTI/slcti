@@ -168,6 +168,14 @@ async function main() {
         });
         res.locals.lang = lang;
         res.locals.t = text => (lang === 'fr-CA' && french[text]) || text;
+        // The language links keep the other parameters of the page (e.g. the filters of a list)
+        res.locals.languageQuery = target => {
+            const query = new URL(req.originalUrl, 'http://localhost').searchParams;
+
+            query.set('lang', target);
+
+            return `?${query}`;
+        };
         next();
     });
 
