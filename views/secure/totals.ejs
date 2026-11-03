@@ -15,10 +15,10 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr><th class="num"><%= t('Bill') %></th><th><%= t('Month') %></th><th><%= t('Client') %></th><th><%= t('Payer') %></th><th><%= t('Date') %></th><th class="num"><%= t('Payment') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><th class="num"><%= t('Difference') %></th><th></th></tr>
-                        <tr class="filter-row">
-                            <td></td>
-                            <td>
+                        <tr class="calc"><th class="num calc"><%= t('Bill') %></th><th class="calc"><%= t('Month') %></th><th><%= t('Client') %></th><th><%= t('Payer') %></th><th><%= t('Date') %></th><th class="num"><%= t('Payment') %></th><th class="num calc"><%= t('Subtotal') %></th><th class="num calc"><%= t('GST (5 %)') %></th><th class="num calc"><%= t('QST (9.975 %)') %></th><th class="num calc"><%= t('Total') %></th><th class="num calc"><%= t('Difference') %></th><th></th></tr>
+                        <tr class="filter-row calc">
+                            <td class="calc"></td>
+                            <td class="calc">
                                 <select name="month" form="filters" aria-label="<%= t('Month') %>" title="<%= t('Month') %>">
                                     <option value=""><%= t('All') %></option>
                                     <% months.forEach(month => { %>
@@ -42,7 +42,13 @@
                                     <% }); %>
                                 </select>
                             </td>
-                            <td colspan="7"></td>
+                            <td></td>
+                            <td></td>
+                            <td class="calc"></td>
+                            <td class="calc"></td>
+                            <td class="calc"></td>
+                            <td class="calc"></td>
+                            <td class="calc"></td>
                             <td class="actions">
                                 <a href="/secure/totals?customer=&payer=&month=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
                             </td>
@@ -54,31 +60,31 @@
                         <% } %>
                         <% bills.forEach(bill => { %>
                             <tr>
-                                <td class="num"><%= String(bill.number).padStart(3, '0') %></td>
-                                <td class="nowrap"><%= bill.month %></td>
+                                <td class="num calc"><%= String(bill.number).padStart(3, '0') %></td>
+                                <td class="nowrap calc"><%= bill.month %></td>
                                 <td><%= bill.customer_name %></td>
                                 <td><%= bill.payer_name %></td>
                                 <td class="nowrap"><%= bill.paid_dates.join(', ') %></td>
                                 <td class="num"><%= bill.paid ? money(bill.paid) : '' %></td>
-                                <td class="num"><%= money(bill.subtotal) %></td>
-                                <td class="num"><%= money(bill.gst) %></td>
-                                <td class="num"><%= money(bill.qst) %></td>
-                                <td class="num"><%= money(bill.total) %></td>
+                                <td class="num calc"><%= money(bill.subtotal) %></td>
+                                <td class="num calc"><%= money(bill.gst) %></td>
+                                <td class="num calc"><%= money(bill.qst) %></td>
+                                <td class="num calc"><%= money(bill.total) %></td>
                                 <% const diff = difference(bill.paid, bill.total); %>
-                                <td class="num <%= sign(diff) %>"><%= diff ? money(diff) : '' %></td>
-                                <td></td>
+                                <td class="num calc <%= sign(diff) %>"><%= diff ? money(diff) : '' %></td>
+                                <td class="calc"></td>
                             </tr>
                         <% }); %>
                     </tbody>
                     <tfoot>
-                        <tr class="total-row">
+                        <tr class="total-row calc">
                             <td colspan="5"><%= bills.length %> <%= bills.length === 1 ? t('bill') : t('bills') %></td>
                             <td class="num"><%= money(paid) %></td>
-                            <td class="num"><%= money(subtotal) %></td>
-                            <td class="num"><%= money(gst) %></td>
-                            <td class="num"><%= money(qst) %></td>
-                            <td class="num"><%= money(total) %></td>
-                            <td class="num <%= sign(difference(paid, total)) %>"><%= money(difference(paid, total)) %></td>
+                            <td class="num calc"><%= money(subtotal) %></td>
+                            <td class="num calc"><%= money(gst) %></td>
+                            <td class="num calc"><%= money(qst) %></td>
+                            <td class="num calc"><%= money(total) %></td>
+                            <td class="num calc <%= sign(difference(paid, total)) %>"><%= money(difference(paid, total)) %></td>
                             <td class="actions">
                                 <% if (isAdmin) { %>
                                 <a href="/secure/payments/new?customer=<%= filters.customer %>&amp;payer=<%= filters.payer %>" class="button small" title="<%= t('New payment') %>" aria-label="<%= t('New payment') %>"><%- include('icon', { name: 'add' }) %></a>

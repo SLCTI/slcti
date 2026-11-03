@@ -6,9 +6,6 @@
                     <p class="error"><%- t('Add an <a href="/secure/resources/new">organisation</a> first.') %></p>
                 <% } %>
                 <input type="hidden" name="_csrf" value="<%= csrf %>">
-                <label><%= t('Date') %>
-                    <input type="date" name="date" value="<%= payment.date %>" required>
-                </label>
                 <label><%= t('Client') %>
                     <select name="resource_id" required>
                         <option value=""></option>
@@ -25,7 +22,10 @@
                         <% }); %>
                     </select>
                 </label>
-                <label><%= t('Amount ($)') %>
+                <label><%= t('Date') %>
+                    <input type="date" name="date" value="<%= payment.date %>" required>
+                </label>
+                <label><%= t('Payment ($)') %>
                     <input type="number" name="amount" value="<%= payment.amount != null && payment.amount !== '' ? Number(payment.amount).toFixed(2) : '' %>" step="0.01" data-decimals="2" required>
                 </label>
                 <div class="form-actions">

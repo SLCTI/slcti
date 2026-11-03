@@ -27,6 +27,14 @@
                 <label><%= t('Bank Account') %>
                     <input name="bank_account" value="<%= resource.bank_account %>">
                 </label>
+                <label><%= t('Billed to') %>
+                    <select name="billed_resource_id">
+                        <option value=""></option>
+                        <% organisations.forEach(organisation => { %>
+                            <option value="<%= organisation.id %>" <%= organisation.id === Number(resource.billed_resource_id) ? 'selected' : '' %>><%= organisation.name %></option>
+                        <% }); %>
+                    </select>
+                </label>
                 <div class="form-actions">
                     <a href="/secure/resources" class="button secondary" title="<%= t('Cancel') %>" aria-label="<%= t('Cancel') %>"><%- include('icon', { name: 'clear' }) %></a>
                     <button type="submit" title="<%= t('Save') %>" aria-label="<%= t('Save') %>"><%- include('icon', { name: 'save' }) %></button>

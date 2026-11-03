@@ -47,20 +47,20 @@
             <% } else { %>
                 <article class="bill">
                     <div class="bill-parties">
-                        <section>
+                        <section class="calc">
                             <h2><%= t('Service provider') %></h2>
                             <dl>
                                 <% party(provider).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, value) %></dd><% }); %>
                             </dl>
                         </section>
-                        <section>
+                        <section class="calc">
                             <h2><%= t('Billed to') %></h2>
                             <dl>
                                 <% party(billedTo).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, name === 'Bank Account' ? null : value) %></dd><% }); %>
                             </dl>
                         </section>
                         <% if (isAdmin) { %>
-                        <section>
+                        <section class="calc">
                             <h2><%= t('Client') %></h2>
                             <dl>
                                 <% party(customer).forEach(([name, value]) => { %><dt><%= t(name) %></dt><dd><%- field(name, name === 'Bank Account' ? null : value) %></dd><% }); %>
@@ -70,9 +70,9 @@
                     </div>
 
                     <div class="table-wrap">
-                        <table>
+                        <table class="calc">
                             <thead>
-                                <tr><th><%= t('Project') %></th><th><%= t('From') %></th><th><%= t('To') %></th><th class="num"><%= t('Hours') %></th><th class="num"><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><th><%= t('Description') %></th><th></th></tr>
+                                <tr class="calc"><th><%= t('Project') %></th><th><%= t('From') %></th><th><%= t('To') %></th><th class="num"><%= t('Hours') %></th><th class="num"><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><th><%= t('Description') %></th><th></th></tr>
                             </thead>
                             <tbody>
                                 <% bill.hourLines.forEach(line => { %>
@@ -97,7 +97,7 @@
                                         <td class="nowrap"><%= line.date %></td>
                                         <td class="nowrap"><%= line.date %></td>
                                         <td></td>
-                                        <td class="num"><%= line.unit %></td>
+                                        <td class="num"><%= line.unit != null ? line.unit.toFixed(2) : '' %></td>
                                         <td class="num"><%= money(line.rate) %></td>
                                         <td class="num"><%= money(line.subtotal) %></td>
                                         <td class="num"><%= line.gst ? money(line.gst) : '' %></td>
@@ -108,7 +108,7 @@
                                 <% }); %>
                             </tbody>
                             <tfoot>
-                                <tr class="total-row">
+                                <tr class="total-row calc">
                                     <td colspan="3"><%= t('Total') %></td>
                                     <td class="num"><%= bill.hours.toFixed(2) %></td>
                                     <td class="num"><%= bill.units ? bill.units.toFixed(2) : '' %></td>

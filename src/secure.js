@@ -256,7 +256,7 @@ function createSecureRouter({ db, logger, production }) {
     const HOURS = `ROUND((julianday(t."end") - julianday(t.start)) * 24, 2)`;
     const resourceName = alias => `${alias}.code`;
 
-    // Expenses: gst and qst are flags (1 = taxable); start is stored as "YYYY-MM-DD"
+    // Expenses: gst and qst are flags (1 = taxable)
     const GST_RATE = 0.05;
     const QST_RATE = 0.09975;
     // The small offset rounds half-cents up like Excel despite floating point (26.925 is stored as 26.924999...)
@@ -264,35 +264,36 @@ function createSecureRouter({ db, logger, production }) {
     const GST = `CASE WHEN e.gst = 1 THEN ROUND(${SUBTOTAL} * ${GST_RATE} + 1e-9, 2) ELSE 0 END`;
     const QST = `CASE WHEN e.qst = 1 THEN ROUND(${SUBTOTAL} * ${QST_RATE} + 1e-9, 2) ELSE 0 END`;
 
+    // The own entries of a client: those of its organisation and of the organisations billed to it (one parameter)
+    const ownEntries = alias => `${alias}.resource_id IN (SELECT id FROM resource WHERE ? IN (id, billed_resource_id))`;
+
     // Customer and month filters, for the timesheet (t) or expense (e) table
     function readFilters(query, alias, own, months) {
         const filters = { customer: query.customer || '', month: pickMonth(query, months) };
         const conditions = [];
         const params = [];
 
-        if (own) { conditions.push(`(${alias}.shipped_resource_id = ? OR ${alias}.billed_resource_id = ?)`); params.push(own, own); }
-        if (filters.customer) { conditions.push(`${alias}.shipped_resource_id = ?`); params.push(filters.customer); }
-        if (filters.month) { conditions.push(`substr(${alias}.start, 1, 7) = ?`); params.push(filters.month); }
+        if (own) { conditions.push(ownEntries(alias)); params.push(own); }
+        if (filters.customer) { conditions.push(`${alias}.resource_id = ?`); params.push(filters.customer); }
+        if (filters.month) { conditions.push(`substr(${alias}.date, 1, 7) = ?`); params.push(filters.month); }
 
         return { filters, where: conditions.length ? 'WHERE ' + conditions.join(' AND ') : '', params };
     }
 
-    // The months found in a date column of a table (a client's own rows only) and the current month, in chronological order
-    const listMonths = async (table, column, own, ownColumns = ['shipped_resource_id', 'billed_resource_id']) => withCurrentMonth((await db.all(
-        `SELECT DISTINCT substr(x.${column}, 1, 7) AS month FROM ${table} x
-         WHERE x.${column} IS NOT NULL${own ? ` AND (${ownColumns.map(c => `x.${c} = ?`).join(' OR ')})` : ''}`,
-        own ? ownColumns.map(() => own) : [])).map(row => row.month));
+    // The months of the entries of a table (a client's own entries only) and the current month, in chronological order
+    const listMonths = async (table, own) => withCurrentMonth((await db.all(
+        `SELECT DISTINCT substr(x.date, 1, 7) AS month FROM ${table} x WHERE x.date IS NOT NULL${own ? ` AND ${ownEntries('x')}` : ''}`,
+        own ? [own] : [])).map(row => row.month));
 
     const listCustomers = () => db.all(`SELECT r.id, ${resourceName('r')} AS name FROM resource r ORDER BY name COLLATE NOCASE`);
 
-    // The list filters only show the resources found in a column of their table (e.g. clients that have timesheets);
-    // for a client, only in its own rows: those where one of the own columns is the client
-    const listUsedResources = (table, column, own, ownColumns = ['shipped_resource_id', 'billed_resource_id']) => db.all(
+    // The list filters only show the clients that have entries in a table; for a client, its own entries only
+    const listUsedResources = (table, own) => db.all(
         `SELECT r.id, ${resourceName('r')} AS name
          FROM resource r
-         WHERE EXISTS (SELECT 1 FROM ${table} x WHERE x.${column} = r.id${own ? ` AND (${ownColumns.map(c => `x.${c} = ?`).join(' OR ')})` : ''})
+         WHERE EXISTS (SELECT 1 FROM ${table} x WHERE x.resource_id = r.id${own ? ` AND ${ownEntries('x')}` : ''})
          ORDER BY name COLLATE NOCASE`,
-        own ? ownColumns.map(() => own) : []
+        own ? [own] : []
     );
 
     // Hours are always taxable: the GST and QST of each entry are rounded to the cent
@@ -309,22 +310,21 @@ function createSecureRouter({ db, logger, production }) {
     // The hours and expenses of a month and client, by date, with their subtotal, taxes and total; descriptions are only
     // shown to administrators
     async function findEntries(query, isAdmin, own) {
-        const months = withCurrentMonth([...await listMonths('timesheet', 'start', own), ...await listMonths('expense', 'start', own)]);
+        const months = withCurrentMonth([...await listMonths('timesheet', own), ...await listMonths('expense', own)]);
         const hours = readFilters(query, 't', own, months);
         const expenses = readFilters(query, 'e', own, months);
-        const names = `${resourceName('s')} AS customer_name, ${resourceName('b')} AS billed_name, ${resourceName('a')} AS assigned_name`;
-        const joins = alias => `LEFT JOIN resource s ON s.id = ${alias}.shipped_resource_id
-             LEFT JOIN resource b ON b.id = ${alias}.billed_resource_id
-             LEFT JOIN resource a ON a.id = ${alias}.assigned_resource_id`;
+        const names = `${resourceName('s')} AS customer_name, ${resourceName('b')} AS billed_name`;
+        const joins = alias => `LEFT JOIN resource s ON s.id = ${alias}.resource_id
+             LEFT JOIN resource b ON b.id = s.billed_resource_id`;
         const timesheets = await db.all(`SELECT t.*, ${HOURS} AS hours, ${names} FROM timesheet t ${joins('t')} ${hours.where}`, hours.params);
         const others = await db.all(
             `SELECT e.*, ${SUBTOTAL} AS subtotal, ${GST} AS gst_amount, ${QST} AS qst_amount, ${SUBTOTAL} + ${GST} + ${QST} AS total, ${names}
              FROM expense e ${joins('e')} ${expenses.where}`, expenses.params);
         const rows = [
-            ...timesheets.map(row => ({ ...row, type: 'hours', date: (row.start || '').slice(0, 10), ...timesheetTaxes(row) })),
-            ...others.map(row => ({ ...row, type: 'expense', date: row.start, end: null, hours: null, gst: row.gst_amount, qst: row.qst_amount }))
+            ...timesheets.map(row => ({ ...row, type: 'hours', ...timesheetTaxes(row) })),
+            ...others.map(row => ({ ...row, type: 'expense', start: null, end: null, hours: null, gst: row.gst_amount, qst: row.qst_amount }))
         ].sort((a, b) =>
-            String(a.start).localeCompare(String(b.start)) ||
+            String(a.date).localeCompare(String(b.date)) || String(a.start ?? '').localeCompare(String(b.start ?? '')) ||
             String(a.customer_name).localeCompare(String(b.customer_name), undefined, { sensitivity: 'base' }) ||
             a.type.localeCompare(b.type) || a.id - b.id);
 
@@ -336,11 +336,11 @@ function createSecureRouter({ db, logger, production }) {
         const { filters, months, rows } = await findEntries(req.query, res.locals.isAdmin, own);
         // The clients that have hours or expenses
         const customers = [...new Map([
-            ...await listUsedResources('timesheet', 'shipped_resource_id', own),
-            ...await listUsedResources('expense', 'shipped_resource_id', own)
+            ...await listUsedResources('timesheet', own),
+            ...await listUsedResources('expense', own)
         ].map(customer => [customer.id, customer])).values()].sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
         const sum = field => round(rows.reduce((total, row) => total + (row[field] || 0), 0));
-        const totals = { hours: sum('hours'), subtotal: sum('subtotal'), gst: sum('gst'), qst: sum('qst'), total: sum('total') };
+        const totals = { hours: sum('hours'), units: sum('unit'), subtotal: sum('subtotal'), gst: sum('gst'), qst: sum('qst'), total: sum('total') };
 
         res.render('secure/timesheets', { filters, months, rows, customers, totals, query: new URLSearchParams(filters).toString() });
     }));
@@ -348,16 +348,15 @@ function createSecureRouter({ db, logger, production }) {
     router.get('/timesheets.csv', asyncHandler(async (req, res) => {
         const { isAdmin, t } = res.locals;
         const { rows } = await findEntries(req.query, isAdmin, ownId(req));
-        const header = ['Type', 'Start', 'End', 'Client', 'Billed to', 'Assigned to', 'Hours', 'Units', 'Rate', 'Subtotal', 'GST (5 %)', 'QST (9.975 %)', 'Total',
+        const header = ['Type', 'Start', 'End', 'Client', 'Billed to', 'Hours', 'Units', 'Rate', 'Subtotal', 'GST (5 %)', 'QST (9.975 %)', 'Total',
             ...(isAdmin ? ['Description'] : [])].map(t).map(csvValue);
         const fixed = value => value == null ? '' : value.toFixed(2);
         const lines = rows.map(row => [
-            t(row.type === 'hours' ? 'Time spent' : 'Expense'),
-            row.start,
-            row.end,
+            t(row.type === 'hours' ? 'Time' : 'Expense'),
+            row.start ? `${row.date} ${row.start}` : row.date,
+            row.end ? `${row.date} ${row.end}` : '',
             row.customer_name,
             row.billed_name,
-            row.assigned_name,
             row.hours ?? '',
             row.type === 'expense' ? row.unit ?? '' : '',
             row.rate ?? '',
@@ -377,8 +376,7 @@ function createSecureRouter({ db, logger, production }) {
     const resourceId = value => parseInt(value, 10) || null;
 
     // One form for both kinds of entries: its type shows the fields of hours (start, end, hourly rate) or of an expense
-    // (units, rate, taxes). Billed to and assigned to are not on it: they are kept on an update, and a new entry takes
-    // them from the latest entry of the same kind for its client (e.g. SPL is billed to Vigiteck)
+    // (units, rate, taxes). Billed to is not on it: it is the billed resource of the client (e.g. SPL is billed to Vigiteck)
     async function renderEntryForm(res, entry, errors = []) {
         res.status(errors.length ? 400 : 200).render('secure/timesheet_form', { entry, customers: await listCustomers(), errors });
     }
@@ -386,49 +384,37 @@ function createSecureRouter({ db, logger, production }) {
     // After saving, the list shows the month of the entry
     const listMonth = date => `/secure/timesheets?month=${String(date).slice(0, 7)}`;
 
-    // Hours: the form edits a date with start and end times; the table stores "YYYY-MM-DD HH:MM"
+    // Hours: a date with start and end times
     function readTimesheet(body) {
         const form = {
             type: 'hours',
             date: text(body.date),
             start_time: text(body.start_time),
             end_time: text(body.end_time),
-            shipped_resource_id: resourceId(body.shipped_resource_id),
+            resource_id: resourceId(body.resource_id),
             rate: number(body.rate),
             description: text(body.description)
         };
         const errors = [];
 
-        if (!form.shipped_resource_id) errors.push('Client is required.');
+        if (!form.resource_id) errors.push('Client is required.');
         if (!isDate(form.date)) errors.push('Date is invalid.');
         if (!isTime(form.start_time) || !isTime(form.end_time)) errors.push('Start and end times are required.');
         else if (form.end_time <= form.start_time) errors.push('End time must be after start time.');
         if (form.rate !== null && form.rate < 0) errors.push('Rate cannot be negative.');
 
-        const values = [
-            form.shipped_resource_id,
-            `${form.date} ${form.start_time}`,
-            `${form.date} ${form.end_time}`,
-            form.rate,
-            form.description
-        ];
+        const values = [form.resource_id, form.date, form.start_time, form.end_time, form.rate, form.description];
 
         return { form, values, errors };
     }
 
-    const timesheetForm = timesheet => ({
-        ...timesheet,
-        type: 'hours',
-        date: (timesheet.start || '').slice(0, 10),
-        start_time: (timesheet.start || '').slice(11, 16),
-        end_time: (timesheet.end || '').slice(11, 16)
-    });
+    const timesheetForm = timesheet => ({ ...timesheet, type: 'hours', start_time: timesheet.start, end_time: timesheet.end });
 
     // Expenses: the rate of an expense is shown in its own field, apart from the hourly rate
     function readExpense(body) {
         const expense = {
-            shipped_resource_id: resourceId(body.shipped_resource_id),
-            start: text(body.date),
+            resource_id: resourceId(body.resource_id),
+            date: text(body.date),
             unit: number(body.unit),
             rate: number(body.rate),
             gst: body.gst ? 1 : 0,
@@ -437,22 +423,22 @@ function createSecureRouter({ db, logger, production }) {
         };
         const errors = [];
 
-        if (!expense.shipped_resource_id) errors.push('Client is required.');
-        if (!isDate(expense.start)) errors.push('Date is invalid.');
+        if (!expense.resource_id) errors.push('Client is required.');
+        if (!isDate(expense.date)) errors.push('Date is invalid.');
         if (expense.unit === null || expense.rate === null) errors.push('Units and rate are required.');
 
         return { expense, errors };
     }
 
-    const EXPENSE_FIELDS = ['start', 'shipped_resource_id', 'unit', 'rate', 'gst', 'qst', 'description'];
-    const expenseForm = expense => ({ ...expense, type: 'expense', date: expense.start, rate: null, expense_rate: expense.rate });
+    const EXPENSE_FIELDS = ['date', 'resource_id', 'unit', 'rate', 'gst', 'qst', 'description'];
+    const expenseForm = expense => ({ ...expense, type: 'expense', rate: null, expense_rate: expense.rate });
 
     router.get('/timesheets/new', asyncHandler(async (req, res) => {
-        const last = await db.get('SELECT shipped_resource_id, rate FROM timesheet ORDER BY id DESC LIMIT 1') || {};
+        const last = await db.get('SELECT resource_id, rate FROM timesheet ORDER BY id DESC LIMIT 1') || {};
 
         await renderEntryForm(res, {
             type: req.query.type === 'expense' ? 'expense' : 'hours',
-            shipped_resource_id: parseInt(req.query.customer, 10) || last.shipped_resource_id,
+            resource_id: parseInt(req.query.customer, 10) || last.resource_id,
             date: new Date().toLocaleDateString('en-CA'),
             rate: last.rate,
             unit: 1,
@@ -469,25 +455,18 @@ function createSecureRouter({ db, logger, production }) {
             if (errors.length) return renderEntryForm(res, expenseForm(expense), errors);
 
             await db.run(
-                `INSERT INTO expense (${EXPENSE_FIELDS.join(', ')}, billed_resource_id, assigned_resource_id)
-                 SELECT ${EXPENSE_FIELDS.map(() => '?').join(', ')}, latest.billed_resource_id, latest.assigned_resource_id
-                 FROM (SELECT 1) LEFT JOIN (SELECT billed_resource_id, assigned_resource_id FROM expense WHERE shipped_resource_id = ? ORDER BY start DESC, id DESC LIMIT 1) latest`,
-                [...EXPENSE_FIELDS.map(field => expense[field]), expense.shipped_resource_id]
+                `INSERT INTO expense (${EXPENSE_FIELDS.join(', ')}) VALUES (${EXPENSE_FIELDS.map(() => '?').join(', ')})`,
+                EXPENSE_FIELDS.map(field => expense[field])
             );
 
-            return res.redirect(listMonth(expense.start));
+            return res.redirect(listMonth(expense.date));
         }
 
         const { form, values, errors } = readTimesheet(req.body);
 
         if (errors.length) return renderEntryForm(res, form, errors);
 
-        await db.run(
-            `INSERT INTO timesheet (shipped_resource_id, start, "end", rate, description, billed_resource_id, assigned_resource_id)
-             SELECT ?, ?, ?, ?, ?, latest.billed_resource_id, latest.assigned_resource_id
-             FROM (SELECT 1) LEFT JOIN (SELECT billed_resource_id, assigned_resource_id FROM timesheet WHERE shipped_resource_id = ? ORDER BY start DESC, id DESC LIMIT 1) latest`,
-            [...values, form.shipped_resource_id]
-        );
+        await db.run('INSERT INTO timesheet (resource_id, date, start, "end", rate, description) VALUES (?, ?, ?, ?, ?, ?)', values);
         res.redirect(listMonth(form.date));
     }));
 
@@ -507,7 +486,7 @@ function createSecureRouter({ db, logger, production }) {
         if (errors.length) return renderEntryForm(res, form, errors);
 
         await db.run(
-            'UPDATE timesheet SET shipped_resource_id = ?, start = ?, "end" = ?, rate = ?, description = ? WHERE id = ?',
+            'UPDATE timesheet SET resource_id = ?, date = ?, start = ?, "end" = ?, rate = ?, description = ? WHERE id = ?',
             [...values, form.id]
         );
         res.redirect(listMonth(form.date));
@@ -540,7 +519,7 @@ function createSecureRouter({ db, logger, production }) {
             `UPDATE expense SET ${EXPENSE_FIELDS.map(field => `${field} = ?`).join(', ')} WHERE id = ?`,
             [...EXPENSE_FIELDS.map(field => expense[field]), expense.id]
         );
-        res.redirect(listMonth(expense.start));
+        res.redirect(listMonth(expense.date));
     }));
 
     router.post('/expenses/:id/delete', asyncHandler(async (req, res) => {
@@ -582,19 +561,19 @@ function createSecureRouter({ db, logger, production }) {
     async function loadBills() {
         const provider = await db.get('SELECT id FROM resource WHERE code = ?', [PROVIDER_CODE]);
         const timesheets = await db.all(
-            `SELECT substr(t.start, 1, 7) AS month, date(t.start) AS date, t.shipped_resource_id AS customer_id,
-                    t.shipped_resource_id, t.billed_resource_id, s.code AS project, ${HOURS} AS hours, COALESCE(t.rate, 0) AS rate
+            `SELECT substr(t.date, 1, 7) AS month, t.date, t.resource_id AS customer_id, s.code AS project, ${HOURS} AS hours,
+                    COALESCE(t.rate, 0) AS rate
              FROM timesheet t
-             LEFT JOIN resource s ON s.id = t.shipped_resource_id
-             WHERE t.start IS NOT NULL`
+             LEFT JOIN resource s ON s.id = t.resource_id
+             WHERE t.date IS NOT NULL`
         );
         const expenses = await db.all(
-            `SELECT substr(e.start, 1, 7) AS month, e.start AS date, e.shipped_resource_id AS customer_id,
-                    e.shipped_resource_id, e.billed_resource_id, s.code AS project, e.unit, e.rate, e.gst, e.qst, e.description
+            `SELECT substr(e.date, 1, 7) AS month, e.date, e.resource_id AS customer_id, s.code AS project, e.unit, e.rate,
+                    e.gst, e.qst, e.description
              FROM expense e
-             LEFT JOIN resource s ON s.id = e.shipped_resource_id
-             WHERE e.start IS NOT NULL
-             ORDER BY e.start, e.id`
+             LEFT JOIN resource s ON s.id = e.resource_id
+             WHERE e.date IS NOT NULL
+             ORDER BY e.date, e.id`
         );
         const bills = new Map();
         const billFor = row => {
@@ -608,7 +587,9 @@ function createSecureRouter({ db, logger, production }) {
         for (const row of timesheets) if (row.customer_id && row.customer_id !== provider?.id) billFor(row).timesheets.push(row);
         for (const row of expenses) if (row.customer_id && row.customer_id !== provider?.id) billFor(row).expenses.push(row);
 
-        const codes = Object.fromEntries((await db.all('SELECT id, code FROM resource')).map(r => [r.id, r.code]));
+        const resources = await db.all('SELECT id, code, billed_resource_id FROM resource');
+        const codes = Object.fromEntries(resources.map(r => [r.id, r.code]));
+        const billedTo = Object.fromEntries(resources.map(r => [r.id, r.billed_resource_id]));
         const list = [...bills.values()].sort((a, b) =>
             a.month.localeCompare(b.month) || String(codes[a.customer_id]).localeCompare(String(codes[b.customer_id]), undefined, { sensitivity: 'base' }));
 
@@ -616,7 +597,7 @@ function createSecureRouter({ db, logger, production }) {
         list.forEach((bill, index) => {
             bill.number = index + 1;
             bill.customer_name = codes[bill.customer_id];
-            bill.billed_id = [...bill.timesheets, ...bill.expenses].map(row => row.billed_resource_id).find(Boolean) || null;
+            bill.billed_id = billedTo[bill.customer_id] || null;
             buildBillLines(bill);
         });
 
@@ -686,8 +667,9 @@ function createSecureRouter({ db, logger, production }) {
     // Totals: one line per bill, like the Total sheet of the Excel workbook
     // Payments are not linked to bills, so each one is matched for its customer:
     // 1. a payment equal to a bill's total (within 5 cents) pays that bill;
-    // 2. any other payment pays the open bill, or run of consecutive open bills, issued before it whose total is
-    //    the closest to its amount; the difference stays on the last bill of the run, where it belongs;
+    // 2. any other payment pays the oldest open bill issued before it, with the following open bills when their total
+    //    is closer to its amount (customers pay their bills in order, even when one was underpaid); the difference
+    //    stays on the last bill of the run, where it belongs;
     // 3. a payment with no open bill left is an overpayment on the customer's latest bill.
     async function applyPayments(bills) {
         const payments = await db.all('SELECT resource_id, date, payer_id, amount FROM payment WHERE amount IS NOT NULL ORDER BY date, id');
@@ -723,17 +705,14 @@ function createSecureRouter({ db, logger, production }) {
             const before = open.filter(bill => bill.month <= String(payment.date).slice(0, 7));
             const candidates = before.length ? before : open;
             let best = null;
+            let sum = 0;
 
-            for (let first = 0; first < candidates.length; first++) {
-                let sum = 0;
+            for (let last = 0; last < candidates.length; last++) {
+                sum += candidates[last].total;
 
-                for (let last = first; last < candidates.length; last++) {
-                    sum += candidates[last].total;
+                const gap = Math.abs(sum - payment.amount);
 
-                    const gap = Math.abs(sum - payment.amount);
-
-                    if (!best || gap < best.gap - 0.005) best = { gap, run: candidates.slice(first, last + 1) };
-                }
+                if (!best || gap < best.gap - 0.005) best = { gap, run: candidates.slice(0, last + 1) };
             }
 
             if (!best) {
@@ -831,7 +810,7 @@ function createSecureRouter({ db, logger, production }) {
 
         if (!payment.resource_id) errors.push('Client is required.');
         if (!isDate(payment.date)) errors.push('Date is invalid.');
-        if (payment.amount === null) errors.push('Amount is required.');
+        if (payment.amount === null) errors.push('Payment is required.');
 
         return { payment, errors };
     }
@@ -864,13 +843,15 @@ function createSecureRouter({ db, logger, production }) {
     // Resources (the page was named Customers before)
     router.get('/customers', (req, res) => res.redirect(301, '/secure/resources'));
 
-    // The contact, email and telephone are on the users of the organisation
-    const RESOURCE_FIELDS = ['code', 'organisation', 'neq', 'gst_number', 'qst_number', 'bank_account', 'website', 'address'];
+    // The contact, email and telephone are on the users of the organisation; its bills go to its billed resource, if any
+    const RESOURCE_TEXTS = ['code', 'organisation', 'neq', 'gst_number', 'qst_number', 'bank_account', 'website', 'address'];
+    const RESOURCE_FIELDS = [...RESOURCE_TEXTS, 'billed_resource_id'];
 
     const countUses = `
-        (SELECT COUNT(*) FROM timesheet x WHERE r.id IN (x.billed_resource_id, x.shipped_resource_id, x.assigned_resource_id))
-      + (SELECT COUNT(*) FROM expense x WHERE r.id IN (x.billed_resource_id, x.shipped_resource_id, x.assigned_resource_id))
-      + (SELECT COUNT(*) FROM payment x WHERE r.id IN (x.resource_id, x.payer_id))`;
+        (SELECT COUNT(*) FROM timesheet x WHERE x.resource_id = r.id)
+      + (SELECT COUNT(*) FROM expense x WHERE x.resource_id = r.id)
+      + (SELECT COUNT(*) FROM payment x WHERE r.id IN (x.resource_id, x.payer_id))
+      + (SELECT COUNT(*) FROM resource x WHERE x.billed_resource_id = r.id)`;
 
     const RESOURCE_COLUMNS = `r.id, ${RESOURCE_FIELDS.map(field => `r.${field}`).join(', ')}, ${resourceName('r')} AS name`;
 
@@ -885,22 +866,25 @@ function createSecureRouter({ db, logger, production }) {
         res.render('secure/resources', { resources, error: RESOURCE_ERRORS[req.query.error] || null });
     }));
 
-    function readResource(body, id) {
-        const resource = Object.fromEntries(RESOURCE_FIELDS.map(field => [field, text(body[field])]));
+    async function readResource(body, id) {
+        const resource = { ...Object.fromEntries(RESOURCE_TEXTS.map(field => [field, text(body[field])])), billed_resource_id: resourceId(body.billed_resource_id) };
         const errors = [];
 
         if (!resource.code) errors.push('Code is required.');
+        if (resource.billed_resource_id && (resource.billed_resource_id === id || !await db.get('SELECT 1 FROM resource WHERE id = ?', [resource.billed_resource_id]))) errors.push('Billed to is invalid.');
 
         return { resource: { ...resource, id }, errors };
     }
 
-    const renderResourceForm = (res, resource, errors = []) =>
-        res.status(errors.length ? 400 : 200).render('secure/resource_form', { resource, errors });
+    // Billed to lists the other organisations
+    const renderResourceForm = async (res, resource, errors = []) => res.status(errors.length ? 400 : 200).render('secure/resource_form', {
+        resource, organisations: (await listCustomers()).filter(organisation => organisation.id !== resource.id), errors
+    });
 
-    router.get('/resources/new', (req, res) => renderResourceForm(res, {}));
+    router.get('/resources/new', asyncHandler(async (req, res) => renderResourceForm(res, {})));
 
     router.post('/resources', asyncHandler(async (req, res) => {
-        const { resource, errors } = readResource(req.body, null);
+        const { resource, errors } = await readResource(req.body, null);
 
         if (errors.length) return renderResourceForm(res, resource, errors);
 
@@ -916,7 +900,7 @@ function createSecureRouter({ db, logger, production }) {
 
         if (!resource) return next();
 
-        renderResourceForm(res, resource);
+        await renderResourceForm(res, resource);
     }));
 
     router.post('/resources/:id', asyncHandler(async (req, res, next) => {
@@ -924,7 +908,7 @@ function createSecureRouter({ db, logger, production }) {
 
         if (!existing) return next();
 
-        const { resource, errors } = readResource(req.body, existing.id);
+        const { resource, errors } = await readResource(req.body, existing.id);
 
         if (errors.length) return renderResourceForm(res, resource, errors);
 

@@ -52,7 +52,7 @@
     "Start": "Début",
     "End": "Fin",
     "Billed to": "Facturé à",
-    "Assigned to": "Assigné à",
+    "Billed to is invalid.": "Facturé à est invalide.",
     "Hourly rate ($)": "Taux horaire ($)",
     "Rate ($)": "Taux ($)",
     "Service provider": "Fournisseur de services",
@@ -121,10 +121,10 @@
     "A site access needs an email, which is its login.": "Un accès au site nécessite un courriel, qui sert d'identifiant.",
     "A password is required for a new site access.": "Un mot de passe est requis pour un nouvel accès au site.",
     "New payment": "Nouveau paiement",
-    "Amount ($)": "Montant ($)",
-    "Amount is required.": "Le montant est obligatoire.",
+    "Payment ($)": "Paiement ($)",
+    "Payment is required.": "Le paiement est obligatoire.",
     "Type": "Type",
     "Expense": "Dépense",
-    "Time spent": "Temps",
+    "Time": "Temps",
     "Hours of": "Heures de"
 }

@@ -11,7 +11,7 @@
                 <div class="table-wrap">
                     <table class="sortable" data-sort-title="<%= t('Sort') %>">
                         <thead>
-                            <tr><th><%= t('Code') %></th><th><%= t('Organisation') %></th><th><%= t('Website') %></th><th></th></tr>
+                            <tr class="calc"><th><%= t('Code') %></th><th><%= t('Organisation') %></th><th><%= t('Website') %></th><th></th></tr>
                         </thead>
                         <tbody>
                             <% resources.forEach(resource => { %>
@@ -19,16 +19,16 @@
                                     <td class="nowrap"><%= resource.code %></td>
                                     <td><%= resource.organisation %></td>
                                     <td><% if (/^https?:\/\//i.test(resource.website || '')) { %><a href="<%= resource.website %>" target="_blank" rel="noopener noreferrer"><%= resource.website %></a><% } else { %><%= resource.website %><% } %></td>
-                                    <td class="actions">
+                                    <td class="actions calc">
                                         <a href="/secure/resources/<%= resource.id %>/edit" class="button small" title="<%= t('Edit') %>" aria-label="<%= t('Edit') %>"><%- include('icon', { name: 'edit' }) %></a>
                                     </td>
                                 </tr>
                             <% }); %>
                         </tbody>
                         <tfoot>
-                            <tr class="total-row">
+                            <tr class="total-row calc">
                                 <td colspan="3"><%= resources.length %> <%= resources.length === 1 ? t('organisation') : t('organisations') %></td>
-                                <td class="actions">
+                                <td class="actions calc">
                                     <a href="/secure/resources/new" class="button small" title="<%= t('New organisation') %>" aria-label="<%= t('New organisation') %>"><%- include('icon', { name: 'add' }) %></a>
                                 </td>
                             </tr>

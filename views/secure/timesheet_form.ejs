@@ -10,21 +10,21 @@
                     <p class="error"><%- t('Add an <a href="/secure/resources/new">organisation</a> first.') %></p>
                 <% } %>
                 <input type="hidden" name="_csrf" value="<%= csrf %>">
-                <%# The type of a saved entry cannot change: hours and expenses are kept in separate tables %>
-                <label><%= t('Type') %>
-                    <select name="type" data-entry-type <%= entry.id ? 'disabled' : '' %>>
-                        <option value="hours" <%= hours ? 'selected' : '' %>><%= t('Time spent') %></option>
-                        <option value="expense" <%= hours ? '' : 'selected' %>><%= t('Expense') %></option>
-                    </select>
-                </label>
                 <label><%= t('Date') %>
                     <input type="date" name="date" value="<%= entry.date %>" required>
                 </label>
                 <label><%= t('Client') %>
-                    <select name="shipped_resource_id" required>
+                    <select name="resource_id" required>
                         <% customers.forEach(customer => { %>
-                            <option value="<%= customer.id %>" <%= customer.id === Number(entry.shipped_resource_id) ? 'selected' : '' %>><%= customer.name %></option>
+                            <option value="<%= customer.id %>" <%= customer.id === Number(entry.resource_id) ? 'selected' : '' %>><%= customer.name %></option>
                         <% }); %>
+                    </select>
+                </label>
+                <%# The type of a saved entry cannot change: hours and expenses are kept in separate tables %>
+                <label><%= t('Type') %>
+                    <select name="type" data-entry-type <%= entry.id ? 'disabled' : '' %>>
+                        <option value="hours" <%= hours ? 'selected' : '' %>><%= t('Time') %></option>
+                        <option value="expense" <%= hours ? '' : 'selected' %>><%= t('Expense') %></option>
                     </select>
                 </label>
                 <%# The fields of the other type are disabled: they are neither checked nor sent %>

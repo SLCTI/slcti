@@ -10,9 +10,9 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr><th class="num"><%= t('Week') %></th><th><%= t('Date') %></th><th><%= t('Day') %></th><th><%= t('Client') %></th><th><%= t('Type') %></th><th><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
-                        <tr class="filter-row">
-                            <td></td>
+                        <tr class="calc"><th class="num calc"><%= t('Week') %></th><th><%= t('Date') %></th><th class="calc"><%= t('Day') %></th><th><%= t('Client') %></th><th class="num calc"><%= t('Hours') %></th><th class="num"><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num calc"><%= t('Subtotal') %></th><th class="num calc"><%= t('GST (5 %)') %></th><th class="num calc"><%= t('QST (9.975 %)') %></th><th class="num calc"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
+                        <tr class="filter-row calc">
+                            <td class="calc"></td>
                             <td>
                                 <select name="month" form="filters" aria-label="<%= t('Month') %>" title="<%= t('Month') %>">
                                     <option value=""><%= t('All') %></option>
@@ -21,7 +21,7 @@
                                     <% }); %>
                                 </select>
                             </td>
-                            <td></td>
+                            <td class="calc"></td>
                             <td>
                                 <select name="customer" form="filters" aria-label="<%= t('Client') %>">
                                     <option value=""><%= t('All') %></option>
@@ -30,7 +30,13 @@
                                     <% }); %>
                                 </select>
                             </td>
-                            <td colspan="7"></td>
+                            <td class="calc"></td>
+                            <td></td>
+                            <td></td>
+                            <td class="calc"></td>
+                            <td class="calc"></td>
+                            <td class="calc"></td>
+                            <td class="calc"></td>
                             <% if (isAdmin) { %><td></td><% } %>
                             <td class="actions">
                                 <a href="/secure/timesheets?customer=&month=" class="button small secondary" title="<%= t('Clear filters') %>" aria-label="<%= t('Clear filters') %>"><%- include('icon', { name: 'clear' }) %></a>
@@ -42,28 +48,23 @@
                             <tr><td colspan="<%= isAdmin ? 13 : 12 %>" class="empty"><%= t('No entries for this period.') %></td></tr>
                         <% } %>
                         <% rows.forEach(row => { %>
-                            <%# The Units column shows the times and number of hours of the time entries, and the units of the expenses %>
+                            <%# As on the bills, the time entries have hours (calculated from their times) and the expenses have units %>
                             <% const hours = row.type === 'hours'; const path = `/secure/${hours ? 'timesheets' : 'expenses'}/${row.id}`; %>
                             <tr>
-                                <% const date = (row.start || '').slice(0, 10); %>
-                                <td class="num"><%= date ? weekOfYear(date) : '' %></td>
-                                <td class="nowrap"><%= date %></td>
-                                <td><%= date ? dayOfWeek(date) : '' %></td>
+                                <td class="num calc"><%= row.date ? weekOfYear(row.date) : '' %></td>
+                                <td class="nowrap"><%= row.date %></td>
+                                <td class="calc"><%= row.date ? dayOfWeek(row.date) : '' %></td>
                                 <td><%= row.customer_name %></td>
-                                <td><%= t(hours ? 'Time spent' : 'Expense') %></td>
-                                <% if (hours) { %>
-                                <td class="nowrap"><%= (row.start || '').slice(11, 16) %> – <%= (row.end || '').slice(11, 16) %><% if (row.hours != null) { %> (<%= row.hours.toFixed(2) %>)<% } %></td>
-                                <% } else { %>
-                                <td class="nowrap"><%= row.unit %></td>
-                                <% } %>
+                                <td class="num calc"><%= row.hours != null ? row.hours.toFixed(2) : '' %></td>
+                                <td class="num"><%= row.unit != null ? row.unit.toFixed(2) : '' %></td>
                                 <td class="num"><%= money(row.rate) %></td>
-                                <td class="num"><%= money(row.subtotal) %></td>
-                                <td class="num"><%= money(row.gst) %></td>
-                                <td class="num"><%= money(row.qst) %></td>
-                                <td class="num"><%= money(row.total) %></td>
+                                <td class="num calc"><%= money(row.subtotal) %></td>
+                                <td class="num calc"><%= money(row.gst) %></td>
+                                <td class="num calc"><%= money(row.qst) %></td>
+                                <td class="num calc"><%= money(row.total) %></td>
                                 <% if (isAdmin) { %>
                                 <td class="description"><%= row.description %></td>
-                                <td class="actions">
+                                <td class="actions calc">
                                     <a href="<%= path %>/edit" class="button small" title="<%= t('Edit') %>" aria-label="<%= t('Edit') %>"><%- include('icon', { name: 'edit' }) %></a>
                                     <form method="post" action="<%= path %>/delete" class="inline" data-confirm="<%= t(hours ? 'Delete this entry?' : 'Delete this expense?') %>">
                                         <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -71,22 +72,22 @@
                                     </form>
                                 </td>
                                 <% } else { %>
-                                <td></td>
+                                <td class="calc"></td>
                                 <% } %>
                             </tr>
                         <% }); %>
                     </tbody>
                     <tfoot>
-                        <tr class="total-row">
+                        <tr class="total-row calc">
                             <td class="nowrap" colspan="3"><%= rows.length %> <%= rows.length === 1 ? t('record') : t('records') %></td>
                             <td></td>
+                            <td class="num calc"><%= totals.hours.toFixed(2) %></td>
+                            <td class="num"><%= totals.units ? totals.units.toFixed(2) : '' %></td>
                             <td></td>
-                            <td class="nowrap">(<%= totals.hours.toFixed(2) %>)</td>
-                            <td></td>
-                            <td class="num"><%= money(totals.subtotal) %></td>
-                            <td class="num"><%= money(totals.gst) %></td>
-                            <td class="num"><%= money(totals.qst) %></td>
-                            <td class="num"><%= money(totals.total) %></td>
+                            <td class="num calc"><%= money(totals.subtotal) %></td>
+                            <td class="num calc"><%= money(totals.gst) %></td>
+                            <td class="num calc"><%= money(totals.qst) %></td>
+                            <td class="num calc"><%= money(totals.total) %></td>
                             <% if (isAdmin) { %><td></td><% } %>
                             <td class="actions">
                                 <% if (isAdmin) { %>

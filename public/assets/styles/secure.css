@@ -124,7 +124,7 @@ form.inline {
 
 /* Filter fields shown as the first row of a table */
 .filter-row td {
-    background: #fafafa;
+    background-color: #fafafa;
     border-bottom: 2px solid #ddd;
     vertical-align: middle;
 }
@@ -149,7 +149,7 @@ form.inline {
 }
 
 .total-row td {
-    background: #fafafa;
+    background-color: #fafafa;
     border-bottom: 0;
     border-top: 2px solid #ddd;
     font-weight: bold;
@@ -206,6 +206,15 @@ th {
 
 .nowrap {
     white-space: nowrap;
+}
+
+/* Calculated columns and rows (from the other fields, never typed) are a bit darker, over any row background */
+.calc,
+tr.calc td,
+tr.calc th,
+table.calc td,
+table.calc th {
+    background-image: linear-gradient(rgba(0, 0, 0, 0.045), rgba(0, 0, 0, 0.045));
 }
 
 /* Long words and URLs must wrap instead of pushing the actions out of view */
@@ -291,7 +300,7 @@ button.delete:disabled:hover {
 /* The three boxes share their rows (a title and the 10 fields of bills.ejs), so that each field is on the same line in
    all of them, even when a value takes two lines in one box */
 .bill-parties section {
-    background: #fff;
+    background-color: #fff;
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     display: grid;

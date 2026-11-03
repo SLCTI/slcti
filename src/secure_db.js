@@ -37,13 +37,42 @@ const USER = `
     );
 `;
 
+// The hours of a client: a date ("YYYY-MM-DD") with start and end times ("HH:MM") on that day; the number of hours,
+// amounts and taxes are calculated
+const TIMESHEET = `
+    CREATE TABLE IF NOT EXISTS timesheet (
+        id INTEGER PRIMARY KEY,
+        resource_id INTEGER REFERENCES resource (id),
+        date DATE,
+        start TIME,
+        "end" TIME,
+        rate REAL,
+        description VARCHAR
+    );
+`;
+
+// The expenses of a client: gst and qst are flags (1 = taxable); the amounts and taxes are calculated
+const EXPENSE = `
+    CREATE TABLE IF NOT EXISTS expense (
+        id INTEGER PRIMARY KEY,
+        resource_id INTEGER REFERENCES resource (id),
+        date DATE,
+        unit REAL,
+        rate REAL,
+        gst INTEGER,
+        qst INTEGER,
+        description VARCHAR
+    );
+`;
+
 const SCHEMA = `
     PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
 
     ${SESSIONS}
 
-    -- The organisations: clients, payers and the provider itself
+    -- The organisations: clients, payers and the provider itself. The bills of a client go to its billed resource
+    -- (e.g. SPL is billed to Vigiteck), else to the client itself
     CREATE TABLE IF NOT EXISTS resource (
         id INTEGER PRIMARY KEY,
         code VARCHAR,
@@ -53,35 +82,15 @@ const SCHEMA = `
         qst_number VARCHAR,
         bank_account VARCHAR,
         website VARCHAR,
-        address VARCHAR
+        address VARCHAR,
+        billed_resource_id INTEGER REFERENCES resource (id)
     );
 
     ${USER}
 
-    -- Start and end are stored as "YYYY-MM-DD HH:MM"
-    CREATE TABLE IF NOT EXISTS timesheet (
-        id INTEGER PRIMARY KEY,
-        billed_resource_id INTEGER REFERENCES resource (id),
-        shipped_resource_id INTEGER REFERENCES resource (id),
-        assigned_resource_id INTEGER REFERENCES resource (id),
-        start DATE,
-        "end" DATE,
-        rate REAL,
-        description VARCHAR
-    );
+    ${TIMESHEET}
 
-    CREATE TABLE IF NOT EXISTS expense (
-        id INTEGER PRIMARY KEY,
-        billed_resource_id INTEGER REFERENCES resource (id),
-        shipped_resource_id INTEGER REFERENCES resource (id),
-        assigned_resource_id INTEGER REFERENCES resource (id),
-        start DATE,
-        unit REAL,
-        rate REAL,
-        gst REAL,
-        qst REAL,
-        description VARCHAR
-    );
+    ${EXPENSE}
 
     CREATE TABLE IF NOT EXISTS payment (
         id INTEGER PRIMARY KEY,
@@ -90,9 +99,12 @@ const SCHEMA = `
         payer_id INTEGER REFERENCES resource (id),
         amount REAL
     );
+`;
 
-    CREATE INDEX IF NOT EXISTS ix_timesheet_start ON timesheet (start);
-    CREATE INDEX IF NOT EXISTS ix_timesheet_shipped_resource_id ON timesheet (shipped_resource_id);
+// Created once the tables have their current columns
+const INDEXES = `
+    CREATE INDEX IF NOT EXISTS ix_timesheet_date ON timesheet (date);
+    CREATE INDEX IF NOT EXISTS ix_timesheet_resource_id ON timesheet (resource_id);
 `;
 
 // Resolve the private database location (SLCTI_DATABASE); it must stay outside of Git (see .gitignore)
@@ -166,7 +178,55 @@ async function openDatabase(file, key = databaseKey()) {
     // One login per email; contacts without a site access may share one
     await wrapper.exec('CREATE UNIQUE INDEX IF NOT EXISTS ix_user_login ON user (lower(email)) WHERE role IS NOT NULL');
 
+    // The entries first had their billed and assigned resources, and their date in both start and end
+    if ((await columns('timesheet')).includes('shipped_resource_id')) await normalizeEntries(wrapper, await columns('resource'));
+
+    await wrapper.exec(INDEXES);
+
     return wrapper;
+}
+
+// The billed resource of the entries depends on their client only: it goes to the client (the latest one that is not
+// the client itself). The assigned resource is dropped (the description tells whose hours an expense bills), and the
+// date of a time entry is only kept once
+async function normalizeEntries(db, resourceColumns) {
+    await db.exec('BEGIN');
+
+    try {
+        const overnight = await db.get('SELECT COUNT(*) AS count FROM timesheet WHERE substr(start, 1, 10) IS NOT substr("end", 1, 10)');
+
+        if (overnight.count) throw new Error(`${overnight.count} time entries end on another day than they start`);
+
+        if (!resourceColumns.includes('billed_resource_id')) await db.exec('ALTER TABLE resource ADD COLUMN billed_resource_id INTEGER REFERENCES resource (id)');
+
+        await db.run(
+            `UPDATE resource SET billed_resource_id = (
+                 SELECT x.billed_resource_id FROM (
+                     SELECT shipped_resource_id, billed_resource_id, start FROM timesheet
+                     UNION ALL SELECT shipped_resource_id, billed_resource_id, start FROM expense
+                 ) x
+                 WHERE x.shipped_resource_id = resource.id AND x.billed_resource_id != resource.id
+                 ORDER BY x.start DESC LIMIT 1)
+             WHERE billed_resource_id IS NULL`
+        );
+        await db.exec(`
+            ALTER TABLE timesheet RENAME TO timesheet_old;
+            ${TIMESHEET}
+            INSERT INTO timesheet (id, resource_id, date, start, "end", rate, description)
+            SELECT id, shipped_resource_id, substr(start, 1, 10), substr(start, 12, 5), substr("end", 12, 5), rate, description FROM timesheet_old;
+            DROP TABLE timesheet_old;
+
+            ALTER TABLE expense RENAME TO expense_old;
+            ${EXPENSE}
+            INSERT INTO expense (id, resource_id, date, unit, rate, gst, qst, description)
+            SELECT id, shipped_resource_id, start, unit, rate, CAST(gst AS INTEGER), CAST(qst AS INTEGER), description FROM expense_old;
+            DROP TABLE expense_old;
+
+            COMMIT`);
+    } catch (err) {
+        await db.exec('ROLLBACK');
+        throw err;
+    }
 }
 
 // The contact of each organisation (name, title, email and telephone) becomes one of its users: the user that already
