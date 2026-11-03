@@ -121,6 +121,8 @@
     "A site access needs an email, which is its login.": "Un accès au site nécessite un courriel, qui sert d'identifiant.",
     "A password is required for a new site access.": "Un mot de passe est requis pour un nouvel accès au site.",
     "New payment": "Nouveau paiement",
+    "Edit payment": "Modifier le paiement",
+    "Delete this payment?": "Supprimer ce paiement ?",
     "Payment ($)": "Paiement ($)",
     "Payment is required.": "Le paiement est obligatoire.",
     "Type": "Type",

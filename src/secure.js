@@ -672,17 +672,19 @@ function createSecureRouter({ db, logger, production }) {
     //    stays on the last bill of the run, where it belongs;
     // 3. a payment with no open bill left is an overpayment on the customer's latest bill.
     async function applyPayments(bills) {
-        const payments = await db.all('SELECT resource_id, date, payer_id, amount FROM payment WHERE amount IS NOT NULL ORDER BY date, id');
+        const payments = await db.all('SELECT id, resource_id, date, payer_id, amount FROM payment WHERE amount IS NOT NULL ORDER BY date, id');
 
-        // Who paid each bill and when, from the payments matched to it
+        // Who paid each bill, when, and with which payments (the Totals page edits them)
         const paidBy = (bill, payment) => {
             if (payment.payer_id && !bill.payers.includes(payment.payer_id)) bill.payers.push(payment.payer_id);
             if (payment.date && !bill.paid_dates.includes(payment.date)) bill.paid_dates.push(payment.date);
+            if (!bill.payments.includes(payment)) bill.payments.push(payment);
         };
 
         for (const bill of bills) {
             bill.paid = 0;
             bill.matched = false;
+            bill.payments = [];
             bill.payers = [];
             bill.paid_dates = [];
         }
@@ -815,25 +817,59 @@ function createSecureRouter({ db, logger, production }) {
         return { payment, errors };
     }
 
-    async function renderPaymentForm(res, payment, errors = []) {
-        res.status(errors.length ? 400 : 200).render('secure/payment_form', { payment, customers: await listCustomers(), errors });
+    // The payment forms go back to the Totals page with its filters ("back"), else to the month of the payment
+    function totalsUrl(back, month) {
+        const from = new URLSearchParams(String(back || ''));
+        const filters = new URLSearchParams(['month', 'customer', 'payer'].filter(name => from.has(name)).map(name => [name, from.get(name)]));
+
+        return `/secure/totals?${filters.size ? filters : new URLSearchParams({ month })}`;
     }
+
+    async function renderPaymentForm(res, payment, back, errors = []) {
+        res.status(errors.length ? 400 : 200).render('secure/payment_form', { payment, back, customers: await listCustomers(), errors });
+    }
+
+    const PAYMENT_FIELDS = ['resource_id', 'date', 'payer_id', 'amount'];
 
     router.get('/payments/new', asyncHandler(async (req, res) => {
         await renderPaymentForm(res, {
             resource_id: parseInt(req.query.customer, 10) || null,
             payer_id: parseInt(req.query.payer, 10) || null,
             date: new Date().toLocaleDateString('en-CA')
-        });
+        }, req.query.back);
     }));
 
     router.post('/payments', asyncHandler(async (req, res) => {
         const { payment, errors } = readPayment(req.body);
 
-        if (errors.length) return renderPaymentForm(res, payment, errors);
+        if (errors.length) return renderPaymentForm(res, payment, req.body.back, errors);
 
-        await db.run('INSERT INTO payment (resource_id, date, payer_id, amount) VALUES (?, ?, ?, ?)', [payment.resource_id, payment.date, payment.payer_id, payment.amount]);
-        res.redirect(`/secure/totals?month=${payment.date.slice(0, 7)}`);
+        await db.run(`INSERT INTO payment (${PAYMENT_FIELDS.join(', ')}) VALUES (${PAYMENT_FIELDS.map(() => '?').join(', ')})`, PAYMENT_FIELDS.map(field => payment[field]));
+        res.redirect(totalsUrl(req.body.back, payment.date.slice(0, 7)));
+    }));
+
+    router.get('/payments/:id/edit', asyncHandler(async (req, res, next) => {
+        const payment = await db.get('SELECT * FROM payment WHERE id = ?', [req.params.id]);
+
+        if (!payment) return next();
+
+        await renderPaymentForm(res, payment, req.query.back);
+    }));
+
+    router.post('/payments/:id', asyncHandler(async (req, res) => {
+        const { payment, errors } = readPayment(req.body);
+
+        payment.id = req.params.id;
+
+        if (errors.length) return renderPaymentForm(res, payment, req.body.back, errors);
+
+        await db.run(`UPDATE payment SET ${PAYMENT_FIELDS.map(field => `${field} = ?`).join(', ')} WHERE id = ?`, [...PAYMENT_FIELDS.map(field => payment[field]), payment.id]);
+        res.redirect(totalsUrl(req.body.back, payment.date.slice(0, 7)));
+    }));
+
+    router.post('/payments/:id/delete', asyncHandler(async (req, res) => {
+        await db.run('DELETE FROM payment WHERE id = ?', [req.params.id]);
+        res.redirect(totalsUrl(req.body.back, ''));
     }));
 
     // The full bill is now shown on the Bills page

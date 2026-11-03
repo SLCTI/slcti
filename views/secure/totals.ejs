@@ -4,6 +4,8 @@
     // Payment minus total: positive when overpaid, negative when an amount is still owed
     const difference = (paid, total) => Math.round((paid - total) * 100) / 100;
     const sign = value => value > 0 ? 'positive' : value < 0 ? 'negative' : '';
+    // The payment forms come back to this page with its filters
+    const back = encodeURIComponent(query);
 %>
             <div class="toolbar">
                 <h1><%= t('Totals') %></h1>
@@ -72,7 +74,19 @@
                                 <td class="num calc"><%= money(bill.total) %></td>
                                 <% const diff = difference(bill.paid, bill.total); %>
                                 <td class="num calc <%= sign(diff) %>"><%= diff ? money(diff) : '' %></td>
-                                <td class="calc"></td>
+                                <%# One line per payment matched to the bill, e.g. a payment of two bills is on both %>
+                                <td class="actions calc">
+                                    <% if (isAdmin) { bill.payments.forEach(payment => { const label = `${payment.date}, ${money(payment.amount)}`; %>
+                                    <div class="actions">
+                                        <a href="/secure/payments/<%= payment.id %>/edit?back=<%= back %>" class="button small" title="<%= t('Edit payment') %> (<%= label %>)" aria-label="<%= t('Edit payment') %> (<%= label %>)"><%- include('icon', { name: 'edit' }) %></a>
+                                        <form method="post" action="/secure/payments/<%= payment.id %>/delete" class="inline" data-confirm="<%= t('Delete this payment?') %> (<%= label %>)">
+                                            <input type="hidden" name="_csrf" value="<%= csrf %>">
+                                            <input type="hidden" name="back" value="<%= query %>">
+                                            <button type="submit" class="small delete" title="<%= t('Delete') %> (<%= label %>)" aria-label="<%= t('Delete') %> (<%= label %>)"><%- include('icon', { name: 'delete' }) %></button>
+                                        </form>
+                                    </div>
+                                    <% }); } %>
+                                </td>
                             </tr>
                         <% }); %>
                     </tbody>
@@ -87,7 +101,7 @@
                             <td class="num calc <%= sign(difference(paid, total)) %>"><%= money(difference(paid, total)) %></td>
                             <td class="actions">
                                 <% if (isAdmin) { %>
-                                <a href="/secure/payments/new?customer=<%= filters.customer %>&amp;payer=<%= filters.payer %>" class="button small" title="<%= t('New payment') %>" aria-label="<%= t('New payment') %>"><%- include('icon', { name: 'add' }) %></a>
+                                <a href="/secure/payments/new?customer=<%= filters.customer %>&amp;payer=<%= filters.payer %>&amp;back=<%= back %>" class="button small" title="<%= t('New payment') %>" aria-label="<%= t('New payment') %>"><%- include('icon', { name: 'add' }) %></a>
                                 <% } %>
                                 <a href="/secure/totals.csv?<%= query %>" class="button small secondary" title="<%= t('Export CSV') %>" aria-label="<%= t('Export CSV') %>"><%- include('icon', { name: 'download' }) %></a>
                             </td>
