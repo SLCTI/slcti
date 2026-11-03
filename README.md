@@ -130,7 +130,7 @@ The code goes through Git; `.env.production` and the database are copied with `s
 At the end, production holds the reference data: a copy of the production database is kept in `private/backups/slcti-production-<time>.db` and replaces the local data (the local data is backed up first to `private/backups/slcti-local-<time>.db`), so local work is always on current data. This works while the local server runs. Both `.env` files must therefore use the same `SLCTI_DATABASE_KEY`. To restore any backup into the local database the same way: `node src/restore_db.js FILE`.
 
 #### Logins and passwords
-Administrators manage the people of the organisations on the Users page: name, title, email and telephone. An organisation can have several users, and its first user is its contact on the invoices. A user with a role (administrator, accountant or client) and a password signs in with its email; choosing *No access* removes its password and leaves a contact only. Administrators have full access. Accountants have read-only access to timesheets (hours and expenses, without descriptions), invoices (without the client box) and totals, but not to organisations nor users. Clients have read-only access to the invoices and totals only (no timesheets nor expenses), limited to the data of their organisation (which they must have): those where it is the client, the billed resource or the payer. An administrator cannot remove their own administrator access nor delete their own user, so there is always one left; an organisation with users cannot be deleted.
+Administrators manage the people of the organisations on the Users page: name, title, email and telephone. An organisation can have several users, and its first user is its contact on the invoices. A user with a role (administrator, accountant or client) and a password signs in with its email; choosing *No access* removes its password and leaves a contact only. Administrators have full access. Accountants have read-only access to timesheets (hours and expenses, without descriptions), invoices (without the client box) and totals, but not to organisations nor users. Clients have read-only access to the invoices and totals only (no timesheets nor expenses), limited to the data of their organisation (which they must have): those where it is the client, the billed resource or the payer. An administrator cannot remove their own administrator access nor delete their own user, so there is always one left; an organisation with users cannot be deleted. Every signed-in user can change their own password from the *Password* link of the menu, after typing the current one; their other sessions are signed out.
 
 To give a site access or reset a password without the site (for example, when nobody can sign in), on the web server:
 ```bash
@@ -147,7 +147,6 @@ node src/backup_db.js
 ```
 
 ## TODO
-- Allow users to update their password;
 - Add invoices, linked to expenses, as downloadable attachments;
 - Add an Associate role.
 

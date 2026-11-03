@@ -170,6 +170,14 @@ form.inline {
     padding: 8px 12px;
 }
 
+.saved {
+    background: #e9f7ef;
+    border-radius: 4px;
+    color: #1e8449;
+    margin: 0;
+    padding: 8px 12px;
+}
+
 .empty {
     color: #777;
 }

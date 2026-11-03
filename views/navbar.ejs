@@ -37,6 +37,7 @@
                     <% } %>
                     <div class="menu-utility">
                         <% if (locals.session) { %>
+                            <a href="/secure/password"><%= t('Password') %></a>
                             <form method="post" action="/secure/logout" class="menu-form">
                                 <input type="hidden" name="_csrf" value="<%= csrf %>">
                                 <button type="submit" title="<%= session.username %>"><%= t('Log out') %></button>

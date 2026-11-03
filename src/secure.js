@@ -222,6 +222,42 @@ function createSecureRouter({ db, logger, production }) {
         next();
     });
 
+    // Every signed-in user can change their own password, after typing the current one (failures count as failed logins).
+    // The other sessions of the user are signed out
+    router.get('/password', (req, res) => res.render('secure/password_form', { errors: [], saved: req.query.saved === '1' }));
+
+    router.post('/password', asyncHandler(async (req, res) => {
+        const now = Date.now();
+        const entry = attempts.get(req.ip);
+        const current = String(req.body.current_password || '');
+        const password = String(req.body.password || '');
+        const errors = [];
+
+        if (entry && entry.count >= MAX_ATTEMPTS && now - entry.first < LOCKOUT_TIME) errors.push('Too many attempts. Please try again later.');
+        else {
+            const user = await db.get('SELECT password_hash FROM user WHERE id = ?', [req.session.user_id]);
+
+            if (!user || !user.password_hash || !await verifyPassword(current, user.password_hash)) {
+                if (!entry || now - entry.first >= LOCKOUT_TIME) attempts.set(req.ip, { count: 1, first: now });
+                else entry.count++;
+
+                logger.warn(`Failed password change for "${req.session.username}" from ${req.ip}`);
+                errors.push('Current password is incorrect.');
+            }
+        }
+
+        if (password.length < PASSWORD_MIN_LENGTH) errors.push('Password must be at least 12 characters.');
+        if (password !== String(req.body.password_confirm || '')) errors.push('Passwords do not match.');
+
+        if (errors.length) return res.status(400).render('secure/password_form', { errors, saved: false });
+
+        attempts.delete(req.ip);
+        await db.run('UPDATE user SET password_hash = ? WHERE id = ?', [await hashPassword(password), req.session.user_id]);
+        await db.run('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?', [req.session.user_id, req.session.token_hash]);
+        logger.info(`User "${req.session.username}" changed their password from ${req.ip}`);
+        res.redirect('/secure/password?saved=1');
+    }));
+
     // The Invoices page was named Bills before, and an invoice had its own page: their links keep working for every role
     router.get('/bills', (req, res) =>
         res.redirect(301, '/secure/invoices' + (req.query.bill ? '?invoice=' + encodeURIComponent(req.query.bill) : '')));
