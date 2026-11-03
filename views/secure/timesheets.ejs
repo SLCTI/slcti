@@ -53,7 +53,7 @@
                             <tr><td colspan="<%= isAdmin ? 13 : 12 %>" class="empty"><%= t('No entries for this period.') %></td></tr>
                         <% } %>
                         <% rows.forEach(row => { %>
-                            <%# As on the bills, the time entries have hours (calculated from their times) and the expenses have units %>
+                            <%# As on the invoices, the time entries have hours (calculated from their times) and the expenses have units %>
                             <% const hours = row.type === 'hours'; const path = `/secure/${hours ? 'timesheets' : 'expenses'}/${row.id}`; %>
                             <tr>
                                 <td class="num calc"><%= row.date ? weekOfYear(row.date) : '' %></td>

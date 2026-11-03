@@ -222,11 +222,17 @@ function createSecureRouter({ db, logger, production }) {
         next();
     });
 
+    // The Invoices page was named Bills before, and an invoice had its own page: their links keep working for every role
+    router.get('/bills', (req, res) =>
+        res.redirect(301, '/secure/invoices' + (req.query.bill ? '?invoice=' + encodeURIComponent(req.query.bill) : '')));
+    router.get(['/bills/:month/:customer', '/invoices/:month/:customer'], (req, res) =>
+        res.redirect(301, '/secure/invoices?invoice=' + encodeURIComponent(`${req.params.month}/${req.params.customer}`)));
+
     // Administrators can do everything; accountants can only read these pages (no organisations nor users), and clients
-    // the bills and totals only
+    // the invoices and totals only
     const READ_ONLY_PAGES = {
-        accountant: ['/', '/timesheets', '/timesheets.csv', '/expenses', '/bills', '/totals', '/totals.csv'],
-        client: ['/', '/bills', '/totals', '/totals.csv']
+        accountant: ['/', '/timesheets', '/timesheets.csv', '/expenses', '/invoices', '/totals', '/totals.csv'],
+        client: ['/', '/invoices', '/totals', '/totals.csv']
     };
 
     router.use((req, res, next) => {
@@ -236,13 +242,13 @@ function createSecureRouter({ db, logger, production }) {
         res.status(403).send('Forbidden');
     });
 
-    router.get('/', (req, res) => res.redirect(req.session.role === 'client' ? '/secure/bills' : '/secure/timesheets'));
+    router.get('/', (req, res) => res.redirect(req.session.role === 'client' ? '/secure/invoices' : '/secure/timesheets'));
 
     // A client only sees the data of its organisation: the timesheets and expenses where it is the client or the billed
-    // resource, and the bills and payments where it is the client, the billed resource or the payer. Null for everyone
+    // resource, and the invoices and payments where it is the client, the billed resource or the payer. Null for everyone
     // else (all data); -1 (nothing) for a client user without an organisation, which the Users page does not allow
     const ownId = req => req.session.role === 'client' ? req.session.resource_id || -1 : null;
-    const ownBill = own => bill => !own || bill.customer_id === own || bill.billed_id === own || bill.payers.includes(own);
+    const ownInvoice = own => invoice => !own || invoice.customer_id === own || invoice.billed_id === own || invoice.payers.includes(own);
 
     // Date helpers for the list views
     router.use((req, res, next) => {
@@ -252,7 +258,7 @@ function createSecureRouter({ db, logger, production }) {
     });
 
     // Timesheets: the hours and the expenses of the clients, listed and entered together; each kind keeps its own table,
-    // which the bills read
+    // which the invoices read
     const HOURS = `ROUND((julianday(t."end") - julianday(t.start)) * 24, 2)`;
     const resourceName = alias => `${alias}.code`;
 
@@ -527,7 +533,7 @@ function createSecureRouter({ db, logger, production }) {
         res.redirect('/secure/timesheets');
     }));
 
-    // Bills: calculated, one per month and client; the bill is sent to the payer, else to the billed resource, else to the client
+    // Invoices: calculated, one per month and client; the invoice is sent to the payer, else to the billed resource, else to the client
     // Round half-cents up like Excel (35.9 * 0.75 is stored as 26.924999... but must give 26.93)
     const round = value => Number(Math.round(Number(value.toFixed(8) + 'e2')) + 'e-2');
     const pad = n => String(n).padStart(2, '0');
@@ -558,7 +564,7 @@ function createSecureRouter({ db, logger, production }) {
         return weeks;
     }
 
-    async function loadBills() {
+    async function loadInvoices() {
         const provider = await db.get('SELECT id FROM resource WHERE code = ?', [PROVIDER_CODE]);
         const timesheets = await db.all(
             `SELECT substr(t.date, 1, 7) AS month, t.date, t.resource_id AS customer_id, s.code AS project, ${HOURS} AS hours,
@@ -575,43 +581,43 @@ function createSecureRouter({ db, logger, production }) {
              WHERE e.date IS NOT NULL
              ORDER BY e.date, e.id`
         );
-        const bills = new Map();
-        const billFor = row => {
+        const invoices = new Map();
+        const invoiceFor = row => {
             const key = `${row.month}/${row.customer_id}`;
 
-            if (!bills.has(key)) bills.set(key, { month: row.month, customer_id: row.customer_id, timesheets: [], expenses: [] });
+            if (!invoices.has(key)) invoices.set(key, { month: row.month, customer_id: row.customer_id, timesheets: [], expenses: [] });
 
-            return bills.get(key);
+            return invoices.get(key);
         };
 
-        for (const row of timesheets) if (row.customer_id && row.customer_id !== provider?.id) billFor(row).timesheets.push(row);
-        for (const row of expenses) if (row.customer_id && row.customer_id !== provider?.id) billFor(row).expenses.push(row);
+        for (const row of timesheets) if (row.customer_id && row.customer_id !== provider?.id) invoiceFor(row).timesheets.push(row);
+        for (const row of expenses) if (row.customer_id && row.customer_id !== provider?.id) invoiceFor(row).expenses.push(row);
 
         const resources = await db.all('SELECT id, code, billed_resource_id FROM resource');
         const codes = Object.fromEntries(resources.map(r => [r.id, r.code]));
         const billedTo = Object.fromEntries(resources.map(r => [r.id, r.billed_resource_id]));
-        const list = [...bills.values()].sort((a, b) =>
+        const list = [...invoices.values()].sort((a, b) =>
             a.month.localeCompare(b.month) || String(codes[a.customer_id]).localeCompare(String(codes[b.customer_id]), undefined, { sensitivity: 'base' }));
 
-        // Numbers follow the chronological order of all bills
-        list.forEach((bill, index) => {
-            bill.number = index + 1;
-            bill.customer_name = codes[bill.customer_id];
-            bill.billed_id = billedTo[bill.customer_id] || null;
-            buildBillLines(bill);
+        // Numbers follow the chronological order of all invoices
+        list.forEach((invoice, index) => {
+            invoice.number = index + 1;
+            invoice.customer_name = codes[invoice.customer_id];
+            invoice.billed_id = billedTo[invoice.customer_id] || null;
+            buildInvoiceLines(invoice);
         });
 
         return list;
     }
 
-    function buildBillLines(bill) {
+    function buildInvoiceLines(invoice) {
         // Hours: one line per week, project and rate
-        bill.hourLines = [];
+        invoice.hourLines = [];
 
-        for (const week of weeksOfMonth(bill.month)) {
+        for (const week of weeksOfMonth(invoice.month)) {
             const groups = new Map();
 
-            for (const row of bill.timesheets.filter(r => r.date >= week.from && r.date <= week.to)) {
+            for (const row of invoice.timesheets.filter(r => r.date >= week.from && r.date <= week.to)) {
                 const key = `${row.project}/${row.rate}`;
 
                 if (!groups.has(key)) groups.set(key, { ...week, project: row.project, rate: row.rate, hours: 0 });
@@ -621,35 +627,35 @@ function createSecureRouter({ db, logger, production }) {
             for (const line of groups.values()) {
                 line.hours = round(line.hours);
                 line.subtotal = line.hours * line.rate;
-                bill.hourLines.push(taxLine(line, true, true));
+                invoice.hourLines.push(taxLine(line, true, true));
             }
         }
 
-        bill.expenseLines = bill.expenses.map(row =>
+        invoice.expenseLines = invoice.expenses.map(row =>
             taxLine({ date: row.date, project: row.project, unit: row.unit, rate: row.rate, subtotal: (row.unit || 0) * (row.rate || 0), description: row.description }, row.gst === 1, row.qst === 1));
 
         const sum = (lines, field) => round(lines.reduce((total, line) => total + line[field], 0));
-        const lines = [...bill.hourLines, ...bill.expenseLines];
+        const lines = [...invoice.hourLines, ...invoice.expenseLines];
 
-        bill.hours = sum(bill.hourLines, 'hours');
-        bill.units = round(bill.expenseLines.reduce((total, line) => total + (line.unit || 0), 0));
-        bill.hoursAmount = sum(bill.hourLines, 'subtotal');
-        bill.expensesAmount = sum(bill.expenseLines, 'subtotal');
-        bill.subtotal = sum(lines, 'subtotal');
-        bill.gst = sum(lines, 'gst');
-        bill.qst = sum(lines, 'qst');
-        bill.total = sum(lines, 'total');
+        invoice.hours = sum(invoice.hourLines, 'hours');
+        invoice.units = round(invoice.expenseLines.reduce((total, line) => total + (line.unit || 0), 0));
+        invoice.hoursAmount = sum(invoice.hourLines, 'subtotal');
+        invoice.expensesAmount = sum(invoice.expenseLines, 'subtotal');
+        invoice.subtotal = sum(lines, 'subtotal');
+        invoice.gst = sum(lines, 'gst');
+        invoice.qst = sum(lines, 'qst');
+        invoice.total = sum(lines, 'total');
     }
 
-    router.get('/bills', asyncHandler(async (req, res) => {
-        // Show one bill, picked by "YYYY-MM/customer id"; the latest one by default
-        // Payments are matched on all bills before keeping a client's own
-        const every = await loadBills();
+    router.get('/invoices', asyncHandler(async (req, res) => {
+        // Show one invoice, picked by "YYYY-MM/customer id"; the latest one by default
+        // Payments are matched on all invoices before keeping a client's own
+        const every = await loadInvoices();
 
         await applyPayments(every);
 
-        const all = every.filter(ownBill(ownId(req)));
-        const bill = all.find(b => `${b.month}/${b.customer_id}` === req.query.bill) || all[all.length - 1] || null;
+        const all = every.filter(ownInvoice(ownId(req)));
+        const invoice = all.find(b => `${b.month}/${b.customer_id}` === req.query.invoice) || all[all.length - 1] || null;
         // An organisation with the name, title, email and telephone of its contact: its first user
         const party = async (where, id) => await db.get(
             `SELECT r.*, u.first_name, u.last_name, u.title, u.email, u.telephone
@@ -657,54 +663,54 @@ function createSecureRouter({ db, logger, production }) {
              WHERE r.${where} = ?`, [id]) || {};
         const provider = await party('code', PROVIDER_CODE);
         // The client box is only shown to administrators
-        const customer = bill && res.locals.isAdmin ? await party('id', bill.customer_id) : {};
-        // Billed to is whoever paid the bill; before it is paid, the billed resource of its entries, else the client
-        const billedTo = bill ? await party('id', bill.payers[0] || bill.billed_id || bill.customer_id) : {};
+        const customer = invoice && res.locals.isAdmin ? await party('id', invoice.customer_id) : {};
+        // Billed to is whoever paid the invoice; before it is paid, the billed resource of its entries, else the client
+        const billedTo = invoice ? await party('id', invoice.payers[0] || invoice.billed_id || invoice.customer_id) : {};
 
-        res.render('secure/bills', { bill, options: all, provider, customer, billedTo });
+        res.render('secure/invoices', { invoice, options: all, provider, customer, billedTo });
     }));
 
-    // Totals: one line per bill, like the Total sheet of the Excel workbook
-    // Payments are not linked to bills, so each one is matched for its customer:
-    // 1. a payment equal to a bill's total (within 5 cents) pays that bill;
-    // 2. any other payment pays the oldest open bill issued before it, with the following open bills when their total
-    //    is closer to its amount (customers pay their bills in order, even when one was underpaid); the difference
-    //    stays on the last bill of the run, where it belongs;
-    // 3. a payment with no open bill left is an overpayment on the customer's latest bill.
-    async function applyPayments(bills) {
+    // Totals: one line per invoice, like the Total sheet of the Excel workbook
+    // Payments are not linked to invoices, so each one is matched for its customer:
+    // 1. a payment equal to an invoice's total (within 5 cents) pays that invoice;
+    // 2. any other payment pays the oldest open invoice issued before it, with the following open invoices when their total
+    //    is closer to its amount (customers pay their invoices in order, even when one was underpaid); the difference
+    //    stays on the last invoice of the run, where it belongs;
+    // 3. a payment with no open invoice left is an overpayment on the customer's latest invoice.
+    async function applyPayments(invoices) {
         const payments = await db.all('SELECT id, resource_id, date, payer_id, amount FROM payment WHERE amount IS NOT NULL ORDER BY date, id');
 
-        // Who paid each bill, when, and with which payments (the Totals page edits them)
-        const paidBy = (bill, payment) => {
-            if (payment.payer_id && !bill.payers.includes(payment.payer_id)) bill.payers.push(payment.payer_id);
-            if (payment.date && !bill.paid_dates.includes(payment.date)) bill.paid_dates.push(payment.date);
-            if (!bill.payments.includes(payment)) bill.payments.push(payment);
+        // Who paid each invoice, when, and with which payments (the Totals page edits them)
+        const paidBy = (invoice, payment) => {
+            if (payment.payer_id && !invoice.payers.includes(payment.payer_id)) invoice.payers.push(payment.payer_id);
+            if (payment.date && !invoice.paid_dates.includes(payment.date)) invoice.paid_dates.push(payment.date);
+            if (!invoice.payments.includes(payment)) invoice.payments.push(payment);
         };
 
-        for (const bill of bills) {
-            bill.paid = 0;
-            bill.matched = false;
-            bill.payments = [];
-            bill.payers = [];
-            bill.paid_dates = [];
+        for (const invoice of invoices) {
+            invoice.paid = 0;
+            invoice.matched = false;
+            invoice.payments = [];
+            invoice.payers = [];
+            invoice.paid_dates = [];
         }
 
         const unmatched = payments.filter(payment => {
-            const bill = bills.find(b => b.customer_id === payment.resource_id && !b.matched && Math.abs(b.total - payment.amount) <= 0.05);
+            const invoice = invoices.find(b => b.customer_id === payment.resource_id && !b.matched && Math.abs(b.total - payment.amount) <= 0.05);
 
-            if (bill) {
-                bill.paid = payment.amount;
-                bill.matched = true;
-                paidBy(bill, payment);
+            if (invoice) {
+                invoice.paid = payment.amount;
+                invoice.matched = true;
+                paidBy(invoice, payment);
             }
 
-            return !bill;
+            return !invoice;
         });
 
         for (const payment of unmatched) {
-            const own = bills.filter(bill => bill.customer_id === payment.resource_id);
-            const open = own.filter(bill => !bill.matched);
-            const before = open.filter(bill => bill.month <= String(payment.date).slice(0, 7));
+            const own = invoices.filter(invoice => invoice.customer_id === payment.resource_id);
+            const open = own.filter(invoice => !invoice.matched);
+            const before = open.filter(invoice => invoice.month <= String(payment.date).slice(0, 7));
             const candidates = before.length ? before : open;
             let best = null;
             let sum = 0;
@@ -729,70 +735,70 @@ function createSecureRouter({ db, logger, production }) {
 
             let left = payment.amount;
 
-            best.run.forEach((bill, index) => {
-                const part = index === best.run.length - 1 ? left : bill.total;
+            best.run.forEach((invoice, index) => {
+                const part = index === best.run.length - 1 ? left : invoice.total;
 
-                bill.paid = round(bill.paid + part);
-                bill.matched = true;
-                paidBy(bill, payment);
+                invoice.paid = round(invoice.paid + part);
+                invoice.matched = true;
+                paidBy(invoice, payment);
                 left = round(left - part);
             });
         }
     }
 
-    // Payments are matched on all bills, so filtering does not change which payment goes to which bill
+    // Payments are matched on all invoices, so filtering does not change which payment goes to which invoice
     async function findTotals(query, own) {
-        const every = await loadBills();
+        const every = await loadInvoices();
         const names = new Map((await db.all(`SELECT r.id, ${resourceName('r')} AS name FROM resource r`)).map(r => [r.id, r.name]));
 
         await applyPayments(every);
 
-        const all = every.filter(ownBill(own));
+        const all = every.filter(ownInvoice(own));
 
-        for (const bill of all) bill.payer_name = bill.payers.map(id => names.get(id)).join(', ');
+        for (const invoice of all) invoice.payer_name = invoice.payers.map(id => names.get(id)).join(', ');
 
-        // The months of the bills and the current month
-        const months = withCurrentMonth(all.map(bill => bill.month));
+        // The months of the invoices and the current month
+        const months = withCurrentMonth(all.map(invoice => invoice.month));
         const filters = { customer: query.customer || '', payer: query.payer || '', month: pickMonth(query, months) };
-        const bills = all.filter(bill =>
-            (!filters.customer || String(bill.customer_id) === filters.customer) &&
-            (!filters.payer || bill.payers.some(id => String(id) === filters.payer)) &&
-            (!filters.month || bill.month === filters.month));
+        const invoices = all.filter(invoice =>
+            (!filters.customer || String(invoice.customer_id) === filters.customer) &&
+            (!filters.payer || invoice.payers.some(id => String(id) === filters.payer)) &&
+            (!filters.month || invoice.month === filters.month));
 
-        // The filter only lists clients that have bills
+        // The filter only lists clients that have invoices
         const byName = (a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
-        const customers = [...new Map(all.map(bill => [bill.customer_id, { id: bill.customer_id, name: bill.customer_name }])).values()].sort(byName);
+        const customers = [...new Map(all.map(invoice => [invoice.customer_id, { id: invoice.customer_id, name: invoice.customer_name }])).values()].sort(byName);
 
-        // The payer filter only lists those who paid a bill
-        const payers = [...new Set(all.flatMap(bill => bill.payers))].map(id => ({ id, name: names.get(id) })).sort(byName);
+        // The payer filter only lists those who paid an invoice
+        const payers = [...new Set(all.flatMap(invoice => invoice.payers))].map(id => ({ id, name: names.get(id) })).sort(byName);
 
-        return { filters, months, bills, customers, payers };
+        return { filters, months, invoices, customers, payers };
     }
 
     router.get('/totals', asyncHandler(async (req, res) => {
-        const { filters, months, bills, customers, payers } = await findTotals(req.query, ownId(req));
-        const sum = field => round(bills.reduce((total, bill) => total + bill[field], 0));
+        const { filters, months, invoices, customers, payers } = await findTotals(req.query, ownId(req));
+        const sum = field => round(invoices.reduce((total, invoice) => total + invoice[field], 0));
 
         res.render('secure/totals', {
-            filters, months, bills, customers, payers, subtotal: sum('subtotal'), gst: sum('gst'), qst: sum('qst'), total: sum('total'), paid: sum('paid'), query: new URLSearchParams(filters).toString()
+            filters, months, invoices, customers, payers, subtotal: sum('subtotal'), gst: sum('gst'), qst: sum('qst'), total: sum('total'), paid: sum('paid'), query: new URLSearchParams(filters).toString()
         });
     }));
 
     router.get('/totals.csv', asyncHandler(async (req, res) => {
-        const { bills } = await findTotals(req.query, ownId(req));
-        const header = ['Bill', 'Month', 'Client', 'Payer', 'Date', 'Payment', 'Subtotal', 'GST (5 %)', 'QST (9.975 %)', 'Total', 'Difference'].map(res.locals.t).map(csvValue);
-        const lines = bills.map(bill => [
-            String(bill.number).padStart(3, '0'),
-            bill.month,
-            bill.customer_name,
-            bill.payer_name,
-            bill.paid_dates.join(', '),
-            bill.paid ? bill.paid.toFixed(2) : '',
-            bill.subtotal.toFixed(2),
-            bill.gst.toFixed(2),
-            bill.qst.toFixed(2),
-            bill.total.toFixed(2),
-            round(bill.paid - bill.total) ? round(bill.paid - bill.total).toFixed(2) : ''
+        const { invoices } = await findTotals(req.query, ownId(req));
+        const header = ['Invoice', 'Month', 'Client', 'Payer', 'Date', 'Payment', 'Subtotal', 'GST (5 %)', 'QST (9.975 %)', 'Total', 'Difference'].map(res.locals.t).map(csvValue);
+        const lines = invoices.map(invoice => [
+            String(invoice.number).padStart(3, '0'),
+            invoice.month,
+            invoice.customer_name,
+            invoice.payer_name,
+            invoice.paid_dates.join(', '),
+            invoice.paid ? invoice.paid.toFixed(2) : '',
+            invoice.subtotal.toFixed(2),
+            invoice.gst.toFixed(2),
+            invoice.qst.toFixed(2),
+            invoice.total.toFixed(2),
+            round(invoice.paid - invoice.total) ? round(invoice.paid - invoice.total).toFixed(2) : ''
         ].map(csvValue).join(','));
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -800,7 +806,7 @@ function createSecureRouter({ db, logger, production }) {
         res.send('﻿' + [header.join(','), ...lines].join('\r\n'));
     }));
 
-    // Payments are added from the Totals page (administrators only), where they are matched to the bills
+    // Payments are added from the Totals page (administrators only), where they are matched to the invoices
     function readPayment(body) {
         const payment = {
             resource_id: resourceId(body.resource_id),
@@ -872,14 +878,10 @@ function createSecureRouter({ db, logger, production }) {
         res.redirect(totalsUrl(req.body.back, ''));
     }));
 
-    // The full bill is now shown on the Bills page
-    router.get('/bills/:month/:customer', (req, res) =>
-        res.redirect(301, '/secure/bills?bill=' + encodeURIComponent(`${req.params.month}/${req.params.customer}`)));
-
     // Resources (the page was named Customers before)
     router.get('/customers', (req, res) => res.redirect(301, '/secure/resources'));
 
-    // The contact, email and telephone are on the users of the organisation; its bills go to its billed resource, if any
+    // The contact, email and telephone are on the users of the organisation; its invoices go to its billed resource, if any
     const RESOURCE_TEXTS = ['code', 'organisation', 'neq', 'gst_number', 'qst_number', 'bank_account', 'website', 'address'];
     const RESOURCE_FIELDS = [...RESOURCE_TEXTS, 'billed_resource_id'];
 

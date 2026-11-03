@@ -17,7 +17,7 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr class="calc"><th class="num calc"><%= t('Bill') %></th><th class="calc"><%= t('Month') %></th><th><%= t('Client') %></th><th><%= t('Payer') %></th><th><%= t('Date') %></th><th class="num"><%= t('Payment') %></th><th class="num calc"><%= t('Subtotal') %></th><th class="num calc"><%= t('GST (5 %)') %></th><th class="num calc"><%= t('QST (9.975 %)') %></th><th class="num calc"><%= t('Total') %></th><th class="num calc"><%= t('Difference') %></th><th></th></tr>
+                        <tr class="calc"><th class="num calc"><%= t('Invoice') %></th><th class="calc"><%= t('Month') %></th><th><%= t('Client') %></th><th><%= t('Payer') %></th><th><%= t('Date') %></th><th class="num"><%= t('Payment') %></th><th class="num calc"><%= t('Subtotal') %></th><th class="num calc"><%= t('GST (5 %)') %></th><th class="num calc"><%= t('QST (9.975 %)') %></th><th class="num calc"><%= t('Total') %></th><th class="num calc"><%= t('Difference') %></th><th></th></tr>
                         <tr class="filter-row calc">
                             <td class="calc"></td>
                             <td class="calc">
@@ -57,26 +57,26 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <% if (bills.length === 0) { %>
-                            <tr><td colspan="12" class="empty"><%= t('No bills yet.') %></td></tr>
+                        <% if (invoices.length === 0) { %>
+                            <tr><td colspan="12" class="empty"><%= t('No invoices yet.') %></td></tr>
                         <% } %>
-                        <% bills.forEach(bill => { %>
+                        <% invoices.forEach(invoice => { %>
                             <tr>
-                                <td class="num calc"><%= String(bill.number).padStart(3, '0') %></td>
-                                <td class="nowrap calc"><%= bill.month %></td>
-                                <td><%= bill.customer_name %></td>
-                                <td><%= bill.payer_name %></td>
-                                <td class="nowrap"><%= bill.paid_dates.join(', ') %></td>
-                                <td class="num"><%= bill.paid ? money(bill.paid) : '' %></td>
-                                <td class="num calc"><%= money(bill.subtotal) %></td>
-                                <td class="num calc"><%= money(bill.gst) %></td>
-                                <td class="num calc"><%= money(bill.qst) %></td>
-                                <td class="num calc"><%= money(bill.total) %></td>
-                                <% const diff = difference(bill.paid, bill.total); %>
+                                <td class="num calc"><%= String(invoice.number).padStart(3, '0') %></td>
+                                <td class="nowrap calc"><%= invoice.month %></td>
+                                <td><%= invoice.customer_name %></td>
+                                <td><%= invoice.payer_name %></td>
+                                <td class="nowrap"><%= invoice.paid_dates.join(', ') %></td>
+                                <td class="num"><%= invoice.paid ? money(invoice.paid) : '' %></td>
+                                <td class="num calc"><%= money(invoice.subtotal) %></td>
+                                <td class="num calc"><%= money(invoice.gst) %></td>
+                                <td class="num calc"><%= money(invoice.qst) %></td>
+                                <td class="num calc"><%= money(invoice.total) %></td>
+                                <% const diff = difference(invoice.paid, invoice.total); %>
                                 <td class="num calc <%= sign(diff) %>"><%= diff ? money(diff) : '' %></td>
-                                <%# One line per payment matched to the bill, e.g. a payment of two bills is on both %>
+                                <%# One line per payment matched to the invoice, e.g. a payment of two invoices is on both %>
                                 <td class="actions calc">
-                                    <% if (isAdmin) { bill.payments.forEach(payment => { const label = `${payment.date}, ${money(payment.amount)}`; %>
+                                    <% if (isAdmin) { invoice.payments.forEach(payment => { const label = `${payment.date}, ${money(payment.amount)}`; %>
                                     <div class="actions">
                                         <a href="/secure/payments/<%= payment.id %>/edit?back=<%= back %>" class="button small" title="<%= t('Edit payment') %> (<%= label %>)" aria-label="<%= t('Edit payment') %> (<%= label %>)"><%- include('icon', { name: 'edit' }) %></a>
                                         <form method="post" action="/secure/payments/<%= payment.id %>/delete" class="inline" data-confirm="<%= t('Delete this payment?') %> (<%= label %>)">
@@ -92,7 +92,7 @@
                     </tbody>
                     <tfoot>
                         <tr class="total-row calc">
-                            <td colspan="5"><%= bills.length %> <%= bills.length === 1 ? t('bill') : t('bills') %></td>
+                            <td colspan="5"><%= invoices.length %> <%= invoices.length === 1 ? t('invoice') : t('invoices') %></td>
                             <td class="num"><%= money(paid) %></td>
                             <td class="num calc"><%= money(subtotal) %></td>
                             <td class="num calc"><%= money(gst) %></td>

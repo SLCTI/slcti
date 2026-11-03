@@ -285,21 +285,21 @@ button.delete:disabled:hover {
     opacity: 0.4;
 }
 
-/* Bill */
-.bill-picker {
+/* Invoice */
+.invoice-picker {
     margin-bottom: 16px;
 }
 
-.bill-parties {
+.invoice-parties {
     display: grid;
     gap: 16px;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     margin-bottom: 16px;
 }
 
-/* The three boxes share their rows (a title and the 10 fields of bills.ejs), so that each field is on the same line in
+/* The three boxes share their rows (a title and the 10 fields of invoices.ejs), so that each field is on the same line in
    all of them, even when a value takes two lines in one box */
-.bill-parties section {
+.invoice-parties section {
     background-color: #fff;
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -312,22 +312,22 @@ button.delete:disabled:hover {
     padding: 16px;
 }
 
-.bill-parties h2 {
+.invoice-parties h2 {
     font-size: 1rem;
     grid-column: 1 / -1;
     margin: 0 0 6px;
     text-transform: uppercase;
 }
 
-.bill-parties dl {
+.invoice-parties dl {
     display: contents;
 }
 
-.bill-parties dt {
+.invoice-parties dt {
     color: #777;
 }
 
-.bill-parties dd {
+.invoice-parties dd {
     margin: 0;
 }
 
@@ -345,7 +345,7 @@ button.delete:disabled:hover {
 
     .navbar,
     .footer,
-    .bill-picker {
+    .invoice-picker {
         display: none;
     }
 
@@ -358,30 +358,30 @@ button.delete:disabled:hover {
         padding: 0;
     }
 
-    .bill-parties section,
+    .invoice-parties section,
     .table-wrap {
         box-shadow: none;
     }
 
     /* The three boxes stay side by side on the narrower portrait page */
-    .bill-parties {
+    .invoice-parties {
         gap: 8px;
         grid-template-columns: repeat(3, 1fr);
     }
 
-    .bill-parties section {
+    .invoice-parties section {
         border: 1px solid #ddd;
         font-size: 8pt;
         gap: 1px 8px;
         padding: 8px 10px;
     }
 
-    .bill-parties h2 {
+    .invoice-parties h2 {
         font-size: 9pt;
         margin-bottom: 4px;
     }
 
-    .bill-parties a {
+    .invoice-parties a {
         color: inherit;
         text-decoration: none;
     }

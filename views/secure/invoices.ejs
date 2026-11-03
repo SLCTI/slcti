@@ -1,4 +1,4 @@
-<%- include('header', { title: bill ? `${t('Bill')} ${String(bill.number).padStart(3, '0')} - ${bill.month} - ${bill.customer_name}` : 'Bills' }) %>
+<%- include('header', { title: invoice ? `${t('Invoice')} ${String(invoice.number).padStart(3, '0')} - ${invoice.month} - ${invoice.customer_name}` : t('Invoices') }) %>
 <%
     const money = value => value != null ? value.toFixed(2) + ' $' : '';
     const label = option => `${String(option.number).padStart(3, '0')} - ${option.month} - ${option.customer_name}`;
@@ -33,20 +33,20 @@
         return link ? `<a href="${escape(link)}"${external}>${escape(value)}</a>` : value == null || value === '' ? '&nbsp;' : escape(value);
     };
 %>
-            <form method="get" action="/secure/bills" class="bill-picker" data-auto-submit>
-                <h1><%= t('Bills') %></h1>
-                <select name="bill" aria-label="<%= t('Bill') %>" autofocus>
+            <form method="get" action="/secure/invoices" class="invoice-picker" data-auto-submit>
+                <h1><%= t('Invoices') %></h1>
+                <select name="invoice" aria-label="<%= t('Invoice') %>" autofocus>
                     <% options.forEach(option => { %>
-                        <option value="<%= key(option) %>" <%= bill && key(option) === key(bill) ? 'selected' : '' %>><%= label(option) %></option>
+                        <option value="<%= key(option) %>" <%= invoice && key(option) === key(invoice) ? 'selected' : '' %>><%= label(option) %></option>
                     <% }); %>
                 </select>
             </form>
 
-            <% if (!bill) { %>
-                <p class="empty"><%= t('No bills yet.') %></p>
+            <% if (!invoice) { %>
+                <p class="empty"><%= t('No invoices yet.') %></p>
             <% } else { %>
-                <article class="bill">
-                    <div class="bill-parties">
+                <article class="invoice">
+                    <div class="invoice-parties">
                         <section class="calc">
                             <h2><%= t('Service provider') %></h2>
                             <dl>
@@ -75,7 +75,7 @@
                                 <tr class="calc"><th><%= t('Project') %></th><th><%= t('From') %></th><th><%= t('To') %></th><th class="num"><%= t('Hours') %></th><th class="num"><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num"><%= t('Subtotal') %></th><th class="num"><%= t('GST (5 %)') %></th><th class="num"><%= t('QST (9.975 %)') %></th><th class="num"><%= t('Total') %></th><th><%= t('Description') %></th><th></th></tr>
                             </thead>
                             <tbody>
-                                <% bill.hourLines.forEach(line => { %>
+                                <% invoice.hourLines.forEach(line => { %>
                                     <tr>
                                         <td><%= line.project %></td>
                                         <td class="nowrap"><%= line.from %></td>
@@ -91,7 +91,7 @@
                                         <td class="description" colspan="2"><%= [t('Hours of'), provider.first_name].filter(Boolean).join(' ') %></td>
                                     </tr>
                                 <% }); %>
-                                <% bill.expenseLines.forEach(line => { %>
+                                <% invoice.expenseLines.forEach(line => { %>
                                     <tr>
                                         <td><%= line.project %></td>
                                         <td class="nowrap"><%= line.date %></td>
@@ -110,13 +110,13 @@
                             <tfoot>
                                 <tr class="total-row calc">
                                     <td colspan="3"><%= t('Total') %></td>
-                                    <td class="num"><%= bill.hours.toFixed(2) %></td>
-                                    <td class="num"><%= bill.units ? bill.units.toFixed(2) : '' %></td>
+                                    <td class="num"><%= invoice.hours.toFixed(2) %></td>
+                                    <td class="num"><%= invoice.units ? invoice.units.toFixed(2) : '' %></td>
                                     <td></td>
-                                    <td class="num"><%= money(bill.subtotal) %></td>
-                                    <td class="num"><%= money(bill.gst) %></td>
-                                    <td class="num"><%= money(bill.qst) %></td>
-                                    <td class="num"><%= money(bill.total) %></td>
+                                    <td class="num"><%= money(invoice.subtotal) %></td>
+                                    <td class="num"><%= money(invoice.gst) %></td>
+                                    <td class="num"><%= money(invoice.qst) %></td>
+                                    <td class="num"><%= money(invoice.total) %></td>
                                     <td></td>
                                     <td class="actions no-print">
                                         <button type="button" class="button small secondary" data-print title="<%= t('PDF') %>" aria-label="<%= t('PDF') %>"><%- include('icon', { name: 'print' }) %></button>

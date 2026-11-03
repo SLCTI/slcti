@@ -23,7 +23,7 @@ const SESSIONS = `
 
 const USER = `
     -- The people of the organisations; a user with a role and a password signs in with its email, and a client only
-    -- sees the data of its organisation. The first user of an organisation is its contact on the bills
+    -- sees the data of its organisation. The first user of an organisation is its contact on the invoices
     CREATE TABLE IF NOT EXISTS user (
         id INTEGER PRIMARY KEY,
         resource_id INTEGER REFERENCES resource (id) ON DELETE CASCADE,
@@ -71,7 +71,7 @@ const SCHEMA = `
 
     ${SESSIONS}
 
-    -- The organisations: clients, payers and the provider itself. The bills of a client go to its billed resource
+    -- The organisations: clients, payers and the provider itself. The invoices of a client go to its billed resource
     -- (e.g. SPL is billed to Vigiteck), else to the client itself
     CREATE TABLE IF NOT EXISTS resource (
         id INTEGER PRIMARY KEY,
@@ -187,7 +187,7 @@ async function openDatabase(file, key = databaseKey()) {
 }
 
 // The billed resource of the entries depends on their client only: it goes to the client (the latest one that is not
-// the client itself). The assigned resource is dropped (the description tells whose hours an expense bills), and the
+// the client itself). The assigned resource is dropped (the description tells whose hours an expense charges), and the
 // date of a time entry is only kept once
 async function normalizeEntries(db, resourceColumns) {
     await db.exec('BEGIN');
@@ -323,7 +323,7 @@ async function moveUsers(db, columns) {
 const ROLES = ['admin', 'accountant', 'client'];
 const PASSWORD_MIN_LENGTH = 12;
 
-// The resource of the business itself: the provider of the bills
+// The resource of the business itself: the provider of the invoices
 const PROVIDER_CODE = 'SLCTI';
 
 // Password hashes are stored as "scrypt$<salt>$<hash>"
