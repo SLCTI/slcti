@@ -88,6 +88,8 @@
     "Role": "Rôle",
     "Accountant (read-only)": "Comptable (lecture seule)",
     "Accountant": "Comptable",
+    "Associate (read-only)": "Collaborateur (lecture seule)",
+    "Associate": "Collaborateur",
     "Client (own data)": "Client (ses propres données)",
     "Administrator": "Administrateur",
     "New password": "Nouveau mot de passe",

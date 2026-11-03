@@ -36,9 +36,10 @@
                 <label><%= t('Role') %>
                     <select name="role">
                         <option value=""><%= t('No access') %></option>
+                        <option value="admin" <%= user.role === 'admin' ? 'selected' : '' %>><%= t('Administrator') %></option>
+                        <option value="associate" <%= user.role === 'associate' ? 'selected' : '' %>><%= t('Associate (read-only)') %></option>
                         <option value="accountant" <%= user.role === 'accountant' ? 'selected' : '' %>><%= t('Accountant (read-only)') %></option>
                         <option value="client" <%= user.role === 'client' ? 'selected' : '' %>><%= t('Client (own data)') %></option>
-                        <option value="admin" <%= user.role === 'admin' ? 'selected' : '' %>><%= t('Administrator') %></option>
                     </select>
                 </label>
                 <div class="form-actions">

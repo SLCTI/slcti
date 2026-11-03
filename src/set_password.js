@@ -1,4 +1,4 @@
-// Usage: node src/set_password.js <email> [admin|accountant|client] [organisation code]
+// Usage: node src/set_password.js <email> [admin|associate|accountant|client] [organisation code]
 // Creates the user with this email, or changes its password (and its role and organisation, when given), and signs out
 // its sessions. A new user is an accountant (read-only) unless another role is given; a client needs an organisation.
 // The Users page does the same; this is for when nobody can sign in.
@@ -28,7 +28,7 @@ async function main() {
     const code = process.argv[4] || null;
 
     if (!email || (role && !ROLES.includes(role))) {
-        console.error('Usage: node src/set_password.js <email> [admin|accountant|client] [organisation code]');
+        console.error('Usage: node src/set_password.js <email> [admin|associate|accountant|client] [organisation code]');
         process.exit(1);
     }
 

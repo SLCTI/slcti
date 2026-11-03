@@ -22,5 +22,35 @@
             "url": "https://www.vigiteck.com/",
             "visible": true
         }
+    ],
+    "team": [
+        {
+            "name": "Paul Laurier",
+            "image": "team/paul_laurier.webp",
+            "title": {
+                "en-CA": "President and Founder, Vigiteck",
+                "fr-CA": "Président et fondateur, Vigiteck"
+            },
+            "email": "plaurier@vigiteck.com",
+            "linkedIn": "https://www.linkedin.com/in/paul-laurier-m-sc-it-44237626/"
+        },
+        {
+            "name": "Li You",
+            "title": {
+                "en-CA": "Cybersecurity Specialist",
+                "fr-CA": "Spécialiste en cybersécurité"
+            },
+            "email": "xyoulix@gmail.com"
+        },
+        {
+            "name": "Romain Cordier",
+            "image": "team/romain_cordier.webp",
+            "title": {
+                "en-CA": "DevSecOps Specialist",
+                "fr-CA": "Spécialiste DevSecOps"
+            },
+            "email": "romain.cordier@proton.me",
+            "linkedIn": "https://www.linkedin.com/in/romain-cordier-8ab91b153/"
+        }
     ]
 }

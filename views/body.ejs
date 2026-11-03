@@ -5,8 +5,8 @@
             <div class="body">
                 <% if (data.background) { %>
                     <img src="/assets/images/bliss.webp" class="background">
-                    <img src="/assets/images/2022-06-09.png" class="simon">
-                    <img src="/assets/images/buddy_macho.png" class="buddy-macho">
+                    <img src="/assets/images/2022-06-09.webp" class="simon">
+                    <img src="/assets/images/buddy_macho.webp" class="buddy-macho">
                 <% } %>
 
                 <h1 class="center header">
@@ -83,6 +83,29 @@
                                     <% } %>
                                 </p>
                             <% } %>
+                        <% }); %>
+                    </div>
+                <% } %>
+
+                <% if (data.team) { %>
+                    <!-- People: their photo, else their initials -->
+                    <div class="team padding-25px">
+                        <% data.team.forEach(person => { %>
+                            <div class="team-card">
+                                <% if (person.image) { %>
+                                    <img src="/assets/images/<%= person.image %>" class="team-photo" alt="<%= person.name %>">
+                                <% } else { %>
+                                    <div class="team-photo team-initials" aria-hidden="true"><%= person.name.split(' ').map(part => part[0]).join('') %></div>
+                                <% } %>
+                                <strong class="team-name"><%= person.name %></strong>
+                                <span class="team-title"><%= person.title[lang] %></span>
+                                <% if (person.email) { %>
+                                    <% const [local, domain] = person.email.split('@'); %><a href="mailto:<%= person.email %>" class="team-email"><%= local %><wbr>@<%= domain %></a>
+                                <% } %>
+                                <% if (person.linkedIn) { %>
+                                    <a href="<%= person.linkedIn %>" target="_blank" rel="noopener" class="team-email"><img src="/assets/icons/<%= icons.linked_in %>" class="icon icon-16x16" alt="">LinkedIn</a>
+                                <% } %>
+                            </div>
                         <% }); %>
                     </div>
                 <% } %>

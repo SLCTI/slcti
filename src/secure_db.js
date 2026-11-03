@@ -86,6 +86,12 @@ const SCHEMA = `
         billed_resource_id INTEGER REFERENCES resource (id)
     );
 
+    -- The roles of the users, in their display order
+    CREATE TABLE IF NOT EXISTS role (
+        code VARCHAR PRIMARY KEY,
+        sort_order INTEGER NOT NULL
+    );
+
     ${USER}
 
     ${TIMESHEET}
@@ -182,6 +188,11 @@ async function openDatabase(file, key = databaseKey()) {
     if ((await columns('timesheet')).includes('shipped_resource_id')) await normalizeEntries(wrapper, await columns('resource'));
 
     await wrapper.exec(INDEXES);
+
+    // The roles known to the code, numbered in the order of ROLES
+    for (const [index, code] of ROLES.entries()) {
+        await wrapper.run('INSERT INTO role (code, sort_order) VALUES (?, ?) ON CONFLICT (code) DO UPDATE SET sort_order = excluded.sort_order', [code, index + 1]);
+    }
 
     return wrapper;
 }
@@ -319,8 +330,8 @@ async function moveUsers(db, columns) {
 }
 
 // Logins and passwords, shared by the Users page and set_password.js
-// A client only sees the data of its organisation
-const ROLES = ['admin', 'accountant', 'client'];
+// A client only sees the data of its organisation. In their display order (sort_order of the role table)
+const ROLES = ['admin', 'associate', 'accountant', 'client'];
 const PASSWORD_MIN_LENGTH = 12;
 
 // The resource of the business itself: the provider of the invoices

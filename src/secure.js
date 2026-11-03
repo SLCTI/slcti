@@ -264,10 +264,12 @@ function createSecureRouter({ db, logger, production }) {
     router.get(['/bills/:month/:customer', '/invoices/:month/:customer'], (req, res) =>
         res.redirect(301, '/secure/invoices?invoice=' + encodeURIComponent(`${req.params.month}/${req.params.customer}`)));
 
-    // Administrators can do everything; accountants can only read these pages (no organisations nor users), and clients
-    // the invoices and totals only
+    // Administrators can do everything; accountants can only read these pages (no organisations nor users), associates
+    // the same for now, and clients the invoices and totals only
+    const ACCOUNTANT_PAGES = ['/', '/timesheets', '/timesheets.csv', '/expenses', '/invoices', '/totals', '/totals.csv'];
     const READ_ONLY_PAGES = {
-        accountant: ['/', '/timesheets', '/timesheets.csv', '/expenses', '/invoices', '/totals', '/totals.csv'],
+        accountant: ACCOUNTANT_PAGES,
+        associate: ACCOUNTANT_PAGES,
         client: ['/', '/invoices', '/totals', '/totals.csv']
     };
 
@@ -1008,10 +1010,11 @@ function createSecureRouter({ db, logger, production }) {
         own: 'You cannot delete your own user.'
     };
 
+    // In the order of their roles, then the contacts without one
     router.get('/users', asyncHandler(async (req, res) => {
         const users = await db.all(
-            `SELECT ${USER_COLUMNS} FROM user u LEFT JOIN resource r ON r.id = u.resource_id
-             ORDER BY organisation COLLATE NOCASE, u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE, u.email COLLATE NOCASE`
+            `SELECT ${USER_COLUMNS} FROM user u LEFT JOIN resource r ON r.id = u.resource_id LEFT JOIN role ro ON ro.code = u.role
+             ORDER BY ro.sort_order IS NULL, ro.sort_order, organisation COLLATE NOCASE, u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE, u.email COLLATE NOCASE`
         );
 
         res.render('secure/users', { users, error: USER_ERRORS[req.query.error] || null });
