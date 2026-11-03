@@ -1,5 +1,10 @@
 <%- include('header', { title: t('Timesheets') }) %>
-<% const money = value => value != null ? value.toFixed(2) + ' $' : ''; %>
+<%
+    const money = value => value != null ? value.toFixed(2) + ' $' : '';
+    // Hours as "9:00 - 9:30 (0,50)": times without their leading zero, and the number of hours with a decimal comma
+    const time = value => String(value || '').replace(/^0(?=\d)/, '');
+    const decimal = value => value != null ? value.toFixed(2).replace('.', ',') : '';
+%>
             <div class="toolbar">
                 <h1><%= t('Timesheets') %></h1>
             </div>
@@ -10,7 +15,7 @@
             <div class="table-wrap">
                 <table class="sortable" data-sort-title="<%= t('Sort') %>">
                     <thead>
-                        <tr class="calc"><th class="num calc"><%= t('Week') %></th><th><%= t('Date') %></th><th class="calc"><%= t('Day') %></th><th><%= t('Client') %></th><th class="num calc"><%= t('Hours') %></th><th class="num"><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num calc"><%= t('Subtotal') %></th><th class="num calc"><%= t('GST (5 %)') %></th><th class="num calc"><%= t('QST (9.975 %)') %></th><th class="num calc"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
+                        <tr class="calc"><th class="num calc"><%= t('Week') %></th><th><%= t('Date') %></th><th class="calc"><%= t('Day') %></th><th><%= t('Client') %></th><th class="nowrap"><%= t('Hours') %></th><th class="num"><%= t('Units') %></th><th class="num"><%= t('Rate') %></th><th class="num calc"><%= t('Subtotal') %></th><th class="num calc"><%= t('GST (5 %)') %></th><th class="num calc"><%= t('QST (9.975 %)') %></th><th class="num calc"><%= t('Total') %></th><% if (isAdmin) { %><th><%= t('Description') %></th><% } %><th></th></tr>
                         <tr class="filter-row calc">
                             <td class="calc"></td>
                             <td>
@@ -30,7 +35,7 @@
                                     <% }); %>
                                 </select>
                             </td>
-                            <td class="calc"></td>
+                            <td></td>
                             <td></td>
                             <td></td>
                             <td class="calc"></td>
@@ -55,7 +60,7 @@
                                 <td class="nowrap"><%= row.date %></td>
                                 <td class="calc"><%= row.date ? dayOfWeek(row.date) : '' %></td>
                                 <td><%= row.customer_name %></td>
-                                <td class="num calc"><%= row.hours != null ? row.hours.toFixed(2) : '' %></td>
+                                <td class="nowrap"><%= hours ? `${time(row.start)} - ${time(row.end)} (${decimal(row.hours)})` : '' %></td>
                                 <td class="num"><%= row.unit != null ? row.unit.toFixed(2) : '' %></td>
                                 <td class="num"><%= money(row.rate) %></td>
                                 <td class="num calc"><%= money(row.subtotal) %></td>
@@ -81,7 +86,7 @@
                         <tr class="total-row calc">
                             <td class="nowrap" colspan="3"><%= rows.length %> <%= rows.length === 1 ? t('record') : t('records') %></td>
                             <td></td>
-                            <td class="num calc"><%= totals.hours.toFixed(2) %></td>
+                            <td class="nowrap">(<%= decimal(totals.hours) %>)</td>
                             <td class="num"><%= totals.units ? totals.units.toFixed(2) : '' %></td>
                             <td></td>
                             <td class="num calc"><%= money(totals.subtotal) %></td>
