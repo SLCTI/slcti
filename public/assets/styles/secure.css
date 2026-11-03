@@ -335,19 +335,23 @@ button.delete:disabled:hover {
 @media print {
     @page {
         margin: 12mm;
-        size: letter landscape;
+        size: letter portrait;
     }
 
     body {
         background: #fff;
-        font-size: 10pt;
+        font-size: 9pt;
     }
 
     .navbar,
     .footer,
-    .bill-picker,
-    .no-print > * {
+    .bill-picker {
         display: none;
+    }
+
+    /* Important: the icon buttons are shown by a more specific rule */
+    .no-print > * {
+        display: none !important;
     }
 
     .secure-main {
@@ -359,8 +363,22 @@ button.delete:disabled:hover {
         box-shadow: none;
     }
 
+    /* The three boxes stay side by side on the narrower portrait page */
+    .bill-parties {
+        gap: 8px;
+        grid-template-columns: repeat(3, 1fr);
+    }
+
     .bill-parties section {
         border: 1px solid #ddd;
+        font-size: 8pt;
+        gap: 1px 8px;
+        padding: 8px 10px;
+    }
+
+    .bill-parties h2 {
+        font-size: 9pt;
+        margin-bottom: 4px;
     }
 
     .bill-parties a {
@@ -374,11 +392,17 @@ button.delete:disabled:hover {
 
     th,
     td {
-        padding: 4px 6px;
+        font-size: 8pt;
+        padding: 3px 4px;
     }
 
     tr {
         break-inside: avoid;
+    }
+
+    /* The column titles are repeated on each page, but the totals only once, after the last line */
+    tfoot {
+        display: table-row-group;
     }
 }
 
