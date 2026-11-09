@@ -3617,6 +3617,23 @@
     "courses": [
         {
             "name": {
+                "en-CA": "Exhibitor for Retronic Design at the Vintage Computer Federation Montreal 2026 (Version 2.0)",
+                "fr-CA": "Exposant pour Retronic Design au Vintage Computer Federation Montréal 2026 (Version 2.0)"
+            },
+            "organisation" : {
+                "en-CA": "Vintage Computer Federation",
+                "fr-CA": "Vintage Computer Federation"
+            },
+            "url": {
+                "en-CA": "https://vcfed.org/",
+                "fr-CA": "https://vcfed.org/"
+            },
+            "code": "VCF",
+            "startDate": "2026-11-06",
+            "endDate": "2026-11-08"
+        },
+        {
+            "name": {
                 "en-CA": "Exhibitor for Retronic Design at the Vintage Computer Federation Montreal 2026",
                 "fr-CA": "Exposant pour Retronic Design au Vintage Computer Federation Montréal 2026"
             },
